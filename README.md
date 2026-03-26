@@ -1,8 +1,6 @@
 # ECSA-2026-ROS2GreenArch
 Replication package of the paper submitted to ECSA 2026 as a short paper. On Green ROS 2 Architecture.
 
-# ROS2GreenArch: Architectural Evolution of ROS 2 and Energy Efficiency
-
 This repository contains the replication package, datasets, and supplementary material for the paper:
 **"On the Architectural Evolution of ROS 2: Toward Greener Robotics Software Design"** (Submitted to ECSA 2026).
 
