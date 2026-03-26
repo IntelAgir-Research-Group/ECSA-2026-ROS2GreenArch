@@ -18,6 +18,7 @@ The Robot Operating System (ROS) is the standard middleware for modern robotics.
 ---
 
 ## 📂 Repository Structure
+* `/tools`: Tools and automation used in the study.
 * `/dataset`: Contains the spreadsheets with the 386 mapped decisions and the 44 "green decisions".
 * `/sonarqube`: Static code analysis results for the considered ROS 2 repository versions.
 * `/code_base`: Metadata and commits for the identified Pull Requests (PRs).
