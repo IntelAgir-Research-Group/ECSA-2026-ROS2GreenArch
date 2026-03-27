@@ -3,8 +3,8 @@ import requests
 import re
 import time
 
-# --- CONFIGURAÇÕES ---
-# Substitua pelo seu token gerado 
+# --- SETTINGS ---
+# Replace with your generated token
 GITHUB_TOKEN = "SEU_TOKEN_AQUI"
 BASE_URL = "https://api.github.com/repos"
 OUTPUT_DIR = "analise_pr_ros2"
@@ -14,8 +14,8 @@ headers = {
     "Accept": "application/vnd.github.v3+json"
 }
 
-# Lista de PRs que você quer analisar
-# Adicionar quantos links quiser aqui
+# List of PRs you want to analyze
+# Add as many links as you want here
 lista_de_pull_requests = [
     "https://github.com/ros2/rosidl_python/pull/35",
     "https://github.com/ros2/rclcpp/pull/628",
@@ -57,34 +57,34 @@ def download_file(url, path):
             with open(path, 'wb') as f:
                 f.write(response.content)
         elif response.status_code == 404:
-            print(f"      [!] Arquivo não encontrado (404) em: {url}")
+            print(f"      [!] File not found (404) at: {url}")
     except Exception as e:
-        print(f"      [!] Erro ao baixar: {e}")
+        print(f"      [!] Error downloading: {e}")
 
 
 def process_pull_request(pr_url):
     match = re.search(r"github\.com/([\w-]+)/([\w-]+)/pull/(\d+)", pr_url)
     if not match:
-        print(f"\n[X] URL inválida: {pr_url}")
+        print(f"\n[X] Invalid URL: {pr_url}")
         return
 
     owner, repo, pr_number = match.groups()
-    print(f"\n--- Processando {repo} PR #{pr_number} ---")
+    print(f"\n--- Processing {repo} PR #{pr_number} ---")
 
-    # 1. Obter dados do PR
+    # 1. Get PR data
     pr_resp = requests.get(f"{BASE_URL}/{owner}/{repo}/pulls/{pr_number}", headers=headers)
     if pr_resp.status_code != 200:
-        print(f"    Erro ao acessar API: {pr_resp.status_code}")
+        print(f"    Error accessing API: {pr_resp.status_code}")
         return
 
     pr_data = pr_resp.json()
     base_sha = pr_data['base']['sha']
     head_sha = pr_data['head']['sha']
 
-    print(f"    Base SHA (Antes): {base_sha[:7]}")
-    print(f"    Head SHA (Depois): {head_sha[:7]}")
+    print(f"    Base SHA (Before): {base_sha[:7]}")
+    print(f"    Head SHA (After): {head_sha[:7]}")
 
-    # 2. Listar arquivos
+    # 2. List files
     files_url = f"{BASE_URL}/{owner}/{repo}/pulls/{pr_number}/files"
     files = requests.get(files_url, headers=headers).json()
 
@@ -92,28 +92,28 @@ def process_pull_request(pr_url):
         filename = file['filename']
         status = file['status']
 
-        # Criamos pastas específicas para cada PR e cada estado
+        # We create specific folders for each PR and each state
         folder_path = os.path.join(OUTPUT_DIR, f"pr_{pr_number}")
         path_before = os.path.join(folder_path, "before", filename)
         path_after = os.path.join(folder_path, "after", filename)
 
-        print(f"    -> Baixando: {filename} ({status})")
+        print(f"    -> Downloading: {filename} ({status})")
 
-        # Versão DEPOIS
+        # AFTER version
         if status != "removed":
             head_file_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{head_sha}/{filename}"
             download_file(head_file_url, path_after)
 
-        # Versão ANTES
+        # BEFORE version
         if status != "added":
             base_file_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{base_sha}/{filename}"
             download_file(base_file_url, path_before)
 
-    # Pequena pausa para respeitar o limite da API (boa prática)
+    # Short pause to respect API rate limits (best practice)
     time.sleep(1)
 
 
-# Loop principal
+# Main loop
 if __name__ == "__main__":
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
@@ -122,4 +122,4 @@ if __name__ == "__main__":
         process_pull_request(url)
 
     print("\n" + "=" * 30)
-    print("Processamento finalizado!")
+    print("Processing finished!")
