@@ -10,17 +10,24 @@ The Robot Operating System (ROS) is the standard middleware for modern robotics.
 ### Key Research Contributions:
 * **Systematic Mapping**: A dataset of 386 architectural decisions manually mapped from official documentation and meta-tickets.
 * **Green Decisions**: Identification of 44 energy-related design decisions (green decisions) through qualitative analysis.
-* **Code Implementation**: Mapping of 17 key Pull Requests (PRs) providing pre- and post-change code versions for further investigation.
+* **Code Implementation**: Mapping of key Pull Requests (PRs) providing pre- and post-change code versions for further investigation.
 * **Quality Analysis**: A static analysis dataset generated with **SonarQube** to support the investigation of software quality attributes like maintainability.
 
 ---
 
 ## 📂 Repository Structure
-* `/tools`: Tools and automation used in the study.
+* `/tools`: Automation scripts used for data mining and code extraction.
 * `/dataset`: Contains the spreadsheets with the 386 mapped decisions and the 44 "green decisions".
 * `/sonarqube`: Static code analysis results for the considered ROS 2 repository versions.
 * `/code`: Metadata and commits for the identified Pull Requests (PRs).
 * `/figures`: Distribution charts of architectural decisions by ROS 2 version and category.
+
+---
+
+## 🛠️ Tools & Automation
+The `/tools` folder contains Python scripts to support the study's workflow:
+* **`extract_meta_tickets.py`**: Scrapes ROS 2 GitHub meta-tickets and documentation to extract issue and Pull Request links.
+* **`download_pr_versions.py`**: Automates the download of source code in two states: **Before** (pre-change) and **After** (post-change) for each architectural decision.
 
 ---
 
@@ -37,8 +44,9 @@ We classify green decisions into categories reflecting distinct mechanisms that 
 
 ## 🚀 Reproduction Steps
 1. **Decision Review**: Access `/dataset` to view the full mapping of ROS 2 evolution.
-2. **Code Extraction**: Use the PR mapping in `/code_base` to retrieve specific code changes (pre- and post-commit).
-3. **Quality Metrics**: Consult the `/sonarqube` folder for static analysis reports related to the identified decisions.
+2. **Data Extraction**: Run `extract_meta_tickets.py` to identify relevant architectural artifacts.
+3. **Code Comparison**: Use `download_pr_versions.py` to retrieve the "before" and "after" code versions for a specific decision.
+4. **Quality Metrics**: Consult the `/sonarqube` folder for static analysis reports.
 
 ---
 
