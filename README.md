@@ -7,6 +7,17 @@ This repository contains the replication package, datasets, and supplementary ma
 ## 🔍 Overview
 The Robot Operating System (ROS) is the standard middleware for modern robotics. As many robotic systems are battery-dependent, energy optimization is vital for longer and more reliable missions. This research investigates the architectural evolution of ROS 2 across seven distributions—from **Dashing Diademata** to **Jazzy Jalisco**—to identify design decisions that impact energy efficiency.
 
+## 👥 Researchers Involved
+
+This study was conducted by:
+
+* **[Michel Albonico]([https://michel.iotrixx.com.br/])** – Professor at the Federal Technological University of Paraná (UTFPR).
+* **[Maciel Felipe Borges](https://github.com/Macielfborges)** – Professor at the Federal Institute of Paraná (IFPR).
+* **[José Augusto Fabri]** – Professor at the Federal Technological University of Paraná (UTFPR).
+
+This research is part of a collaborative effort focused on software engineering and robotics sustainability.
+
+
 ### Key Research Contributions:
 * **Systematic Mapping**: A dataset of 386 architectural decisions manually mapped from official documentation and meta-tickets.
 * **Green Decisions**: Identification of 44 energy-related design decisions (green decisions) through qualitative analysis.
