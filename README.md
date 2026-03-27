@@ -43,10 +43,15 @@ We classify green decisions into categories reflecting distinct mechanisms that 
 ---
 
 ## 🚀 Reproduction Steps
-1. **Decision Review**: Access `/dataset` to view the full mapping of ROS 2 evolution.
-2. **Data Extraction**: Run `extract_meta_tickets.py` to identify relevant architectural artifacts.
-3. **Code Comparison**: Use `download_pr_versions.py` to retrieve the "before" and "after" code versions for a specific decision.
-4. **Quality Metrics**: Consult the `/sonarqube` folder for static analysis reports.
+To replicate the study or use the provided scripts, follow these steps:
+
+1. **Environment Setup**: Install the necessary Python libraries using the requirements file located in the tools folder to ensure all scripts run correctly:
+   ```bash
+   pip install -r tools/requirements.txt
+2. **Decision Review**: Access `/dataset` to view the full mapping of ROS 2 evolution.
+3. **Data Extraction**: Run `extract_meta_tickets.py` to identify relevant architectural artifacts.
+4. **Code Comparison**: Use `download_pr_versions.py` to retrieve the "before" and "after" code versions for a specific decision.
+5. **Quality Metrics**: Consult the `/sonarqube` folder for static analysis reports.
 
 ---
 
