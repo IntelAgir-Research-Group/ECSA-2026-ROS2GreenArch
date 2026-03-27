@@ -26,7 +26,8 @@ The Robot Operating System (ROS) is the standard middleware for modern robotics.
   * `ros2_green_decisions.csv`: Subset of 44 energy-related (green) decisions.
   * `ros2_code_mapping_prs.csv`: Links to PRs and code versions (Base/Head SHAs).
 * `/sonarqube`: Static code analysis results for the considered ROS 2 repository versions.
-* `/code`: Metadata and commits for the identified Pull Requests (PRs).
+* `/code`: Source code versions for the identified green decisions:
+  * Each subfolder (e.g., `PR 1`, `PR 2`) contains the `before` and `after` versions of the files modified in that specific Pull Request.
 * `/figures`: Distribution charts of architectural decisions by ROS 2 version and category.
 
 ---
