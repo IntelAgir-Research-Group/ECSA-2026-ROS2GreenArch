@@ -18,6 +18,10 @@ The Robot Operating System (ROS) is the standard middleware for modern robotics.
 ## 📂 Repository Structure
 * `/tools`: Automation scripts used for data mining and code extraction.
 * `/dataset`: Contains the spreadsheets with the 386 mapped decisions and the 44 "green decisions".
+  * `ros2_distributions.csv`: Analyzed ROS 2 distributions (Dashing to Jazzy).
+  * `ros2_architectural_decisions.csv`: Full mapping of 386 architectural decisions.
+  * `ros2_green_decisions.csv`: Subset of 44 energy-related (green) decisions.
+  * `ros2_code_mapping_prs.csv`: Links to PRs and code versions (Base/Head SHAs).
 * `/sonarqube`: Static code analysis results for the considered ROS 2 repository versions.
 * `/code`: Metadata and commits for the identified Pull Requests (PRs).
 * `/figures`: Distribution charts of architectural decisions by ROS 2 version and category.
