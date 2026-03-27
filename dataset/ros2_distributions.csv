@@ -1,0 +1,8 @@
+ID,Name,Release_Date,EOL_Date,Distribution_Documentation,Release_Package,Release_Meta_Ticket,Ubuntu_Version
+D1,Dashing Diademata,2019-05-31,2021-05-31,https://docs.ros.org/en/rolling/Releases/Release-Dashing-Diademata.html,https://github.com/ros2/ros2/releases/tag/release-dashing-20190531,https://github.com/ros2/ros2/issues/607,18.04
+D2,Eloquent Elusor,2019-11-22,,https://docs.ros.org/en/rolling/Releases/Release-Eloquent-Elusor.html,https://github.com/ros2/ros2/releases/tag/release-eloquent-20191122,https://github.com/ros2/ros2/issues/734,18.04
+D3,Foxy Fitzroy,2020-05-23,,https://docs.ros.org/en/rolling/Releases/Release-Foxy-Fitzroy.html,https://github.com/ros2/ros2/releases/tag/release-foxy-20200605,https://github.com/ros2/ros2/issues/830,20.04
+D4,Galactic Geochelone,2021-05-23,,https://docs.ros.org/en/rolling/Releases/Release-Galactic-Geochelone.html#,https://github.com/ros2/ros2/releases/tag/release-galactic-20210523,https://github.com/ros2/ros2/issues/954,20.04
+D5,Humble Hawksbill ,2022-05-23,,https://docs.ros.org/en/rolling/Releases/Release-Humble-Hawksbill.html,https://github.com/ros2/ros2/releases/tag/release-humble-20220523,https://github.com/ros2/ros2/issues/1149,22.04
+D6,Iron Irwini,2023-05-23,,https://docs.ros.org/en/rolling/Releases/Release-Iron-Irwini.html,https://github.com/ros2/ros2/releases/tag/release-iron-20230523,https://github.com/ros2/ros2/issues/1298,22.04
+D7,Jazzy Jalisco,2024-05-23,,https://docs.ros.org/en/rolling/Releases/Release-Jazzy-Jalisco.html,https://github.com/ros2/ros2/releases/tag/release-jazzy-20240523,,24.04
