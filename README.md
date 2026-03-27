@@ -11,7 +11,7 @@ The Robot Operating System (ROS) is the standard middleware for modern robotics.
 
 This study was conducted by:
 
-* **[Michel Albonico]([https://michel.iotrixx.com.br/])** – Professor at the Federal Technological University of Paraná (UTFPR).
+* **[Michel Albonico](https://michel.iotrixx.com.br/)** – Professor at the Federal Technological University of Paraná (UTFPR).
 * **[Maciel Felipe Borges](https://github.com/Macielfborges)** – Professor at the Federal Institute of Paraná (IFPR).
 * **[José Augusto Fabri]** – Professor at the Federal Technological University of Paraná (UTFPR).
 
