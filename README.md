@@ -13,7 +13,7 @@ This study was conducted by:
 
 * **[Michel Albonico](https://michel.iotrixx.com.br/)** – Professor at the Federal Technological University of Paraná (UTFPR).
 * **[Maciel Felipe Borges](https://github.com/Macielfborges)** – Professor at the Federal Institute of Paraná (IFPR).
-* **[José Augusto Fabri]** – Professor at the Federal Technological University of Paraná (UTFPR).
+* **José Augusto Fabri** – Professor at the Federal Technological University of Paraná (UTFPR).
 
 This research is part of a collaborative effort focused on software engineering and robotics sustainability.
 
