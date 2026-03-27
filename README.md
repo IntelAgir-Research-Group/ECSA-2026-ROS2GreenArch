@@ -11,7 +11,6 @@ The Robot Operating System (ROS) is the standard middleware for modern robotics.
 * **Systematic Mapping**: A dataset of 386 architectural decisions manually mapped from official documentation and meta-tickets.
 * **Green Decisions**: Identification of 44 energy-related design decisions (green decisions) through qualitative analysis.
 * **Code Implementation**: Mapping of key Pull Requests (PRs) providing pre- and post-change code versions for further investigation.
-* **Quality Analysis**: A static analysis dataset generated with **SonarQube** to support the investigation of software quality attributes like maintainability.
 
 ---
 
@@ -25,21 +24,8 @@ The Robot Operating System (ROS) is the standard middleware for modern robotics.
   * `ros2_architectural_decisions.csv`: Full mapping of 386 architectural decisions.
   * `ros2_green_decisions.csv`: Subset of 44 energy-related (green) decisions.
   * `ros2_code_mapping_prs.csv`: Links to PRs and code versions (Base/Head SHAs).
-* `/sonarqube`: Static code analysis results for the considered ROS 2 repository versions.
 * `/code`: Source code versions for the identified green decisions:
   * Each subfolder (e.g., `PR 1`, `PR 2`) contains the `before` and `after` versions of the files modified in that specific Pull Request.
-* `/figures`: Distribution charts of architectural decisions by ROS 2 version and category.
-
----
-
-## 📊 Classification of Green Decisions
-We classify green decisions into categories reflecting distinct mechanisms that influence energy consumption:
-1. **Communication and Middleware Configuration**: DDS settings, QoS policies, and transport mechanisms.
-2. **Memory Management**: Allocation strategies, buffer handling, and data lifecycle.
-3. **Data Management and Logging**: Storage, logging mechanisms, and serialization (e.g., rosbag/SQLite).
-4. **Node Architecture and Composition**: Intra-process communication and node structure.
-5. **Concurrency and Execution Model**: Multi-threading models, executors, and callback handling.
-6. **Tooling and Visualization Support**: Developer tools for diagnosis and system optimization.
 
 ---
 
@@ -52,7 +38,6 @@ To replicate the study or use the provided scripts, follow these steps:
 2. **Decision Review**: Access `/dataset` to view the full mapping of ROS 2 evolution.
 3. **Data Extraction**: Run `extract_meta_tickets.py` to identify relevant architectural artifacts.
 4. **Code Comparison**: Use `download_pr_versions.py` to retrieve the "before" and "after" code versions for a specific decision.
-5. **Quality Metrics**: Consult the `/sonarqube` folder for static analysis reports.
 
 ---
 
