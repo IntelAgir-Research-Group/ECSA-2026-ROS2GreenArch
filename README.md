@@ -17,9 +17,9 @@ The Robot Operating System (ROS) is the standard middleware for modern robotics.
 
 ## 📂 Repository Structure
 * `/tools`: Automation scripts used for data mining and code extraction.
-  *`extract_meta_tickets.py`**: Automated scraper for ROS 2 meta-tickets and documentation to map architectural decisions.
-  *`download_pr_versions.py`**: Script to retrieve "Before" and "After" code versions from GitHub Pull Requests.
-  *`requirements.txt`**: List of Python dependencies (e.g., `requests`, `beautifulsoup4`) for the research environment.
+  *`extract_meta_tickets.py`: Automated scraper for ROS 2 meta-tickets and documentation to map architectural decisions.
+  *`download_pr_versions.py`: Script to retrieve "Before" and "After" code versions from GitHub Pull Requests.
+  *`requirements.txt`: List of Python dependencies (e.g., `requests`, `beautifulsoup4`) for the research environment.
 * `/dataset`: Contains the spreadsheets with the 386 mapped decisions and the 44 "green decisions".
   * `ros2_distributions.csv`: Analyzed ROS 2 distributions (Dashing to Jazzy).
   * `ros2_architectural_decisions.csv`: Full mapping of 386 architectural decisions.
