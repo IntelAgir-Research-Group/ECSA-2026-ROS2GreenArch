@@ -1,0 +1,6 @@
+# Libraries for data extraction and Web Scraping
+requests==2.31.0
+beautifulsoup4==4.12.2
+
+# Libraries for file manipulation and regex (built-in, but listed for clarity)
+# csv, re, os, time, and json are already part of the Python standard library
