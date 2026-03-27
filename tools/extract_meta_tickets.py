@@ -6,69 +6,69 @@ import csv
 import re
 
 def extract_issue_links(url):
-    # Envia uma requisição para obter o conteúdo da página
+    # Sends a request to get the page content
     response = requests.get(url)
 
-    # Verifica se a requisição foi bem-sucedida
+    # Checks if the request was successful
     if response.status_code != 200:
-        print(f"Falha ao recuperar a página. Código de status: {response.status_code}")
+        print(f"Failed to retrieve the page. Status code: {response.status_code}")
         return []
 
-    # Faz o parsing do conteúdo HTML usando BeautifulSoup
+    # Parses the HTML content using BeautifulSoup
     soup = BeautifulSoup(response.text, 'html.parser')
 
-    # Busca todos os elementos com a classe 'issue-link'
+    # Finds all elements with the 'issue-link' class
     issue_links = soup.find_all(class_='issue-link')
 
-    # Busca todos os links <a> que contenham 'pull' na URL
+    # Finds all <a> links containing 'pull' in the URL
     pull_request_links = soup.find_all('a', href=True)
 
-    # Lista para armazenar os dados extraídos
+    # List to store the extracted data
     issues = []
 
-    # Conjunto para armazenar URLs já processados (evitar duplicidades)
+    # Set to store already processed URLs (to avoid duplicates)
     seen_urls = set()
 
-    # Processa os links com a classe 'issue-link' (issues)
+    # Processes links with the 'issue-link' class (issues)
     for link in issue_links:
         description = link.text.strip()
         href = link.get('href')
-        # Remove o padrão #xxx da descrição
+        # Removes the #xxx pattern from the description
         description = re.sub(r'#\d+', '', description).strip()
 
         if href not in seen_urls:
             issues.append({'description': description, 'url': href})
-            seen_urls.add(href)  # Adiciona o URL ao conjunto
+            seen_urls.add(href)  # Adds the URL to the set
 
-    # Processa os links de pull requests (contêm 'pull' na URL)
+    # Processes pull request links (containing 'pull' in the URL)
     for link in pull_request_links:
         href = link['href']
-        if 'pull' in href and 'github' in href:  # Captura apenas os pull requests do GitHub
+        if 'pull' in href and 'github' in href:  # Captures only GitHub pull requests
             description = link.text.strip()
-            # Remove o padrão #xxx da descrição
+            # Removes the #xxx pattern from the description
             description = re.sub(r'#\d+', '', description).strip()
 
             if href not in seen_urls:
                 issues.append({'description': description, 'url': href})
-                seen_urls.add(href)  # Adiciona o URL ao conjunto
+                seen_urls.add(href)  # Adds the URL to the set
 
     return issues
 
 def save_to_csv(issues, filename):
-    # Salva os dados extraídos em um arquivo .csv
+    # Saves the extracted data to a .csv file
     with open(filename, mode='w', newline='', encoding='utf-8') as file:
         writer = csv.DictWriter(file, fieldnames=['description', 'url'])
         writer.writeheader()
         for issue in issues:
             writer.writerow(issue)
 
-# Exemplo de uso
-url = 'https://github.com/ros2/ros2/issues/1149'  # Substitua pela URL desejada
+# Example usage
+url = 'https://github.com/ros2/ros2/issues/1149'  # Replace with the desired URL
 issues = extract_issue_links(url)
 
-# Salva os issues e pull requests em um arquivo CSV
+# Saves issues and pull requests to a CSV file
 if issues:
     save_to_csv(issues, 'issues_and_pull_requests.csv')
-    print("Resultados salvos em 'issues_and_pull_requests.csv'.")
+    print("Results saved to 'issues_and_pull_requests.csv'.")
 else:
-    print("Nenhum issue ou pull request encontrado.")
+    print("No issues or pull requests found.")
