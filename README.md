@@ -31,13 +31,6 @@ The Robot Operating System (ROS) is the standard middleware for modern robotics.
 
 ---
 
-## 🛠️ Tools & Automation
-The `/tools` folder contains Python scripts to support the study's workflow:
-* **`extract_meta_tickets.py`**: Scrapes ROS 2 GitHub meta-tickets and documentation to extract issue and Pull Request links.
-* **`download_pr_versions.py`**: Automates the download of source code in two states: **Before** (pre-change) and **After** (post-change) for each architectural decision.
-
----
-
 ## 📊 Classification of Green Decisions
 We classify green decisions into categories reflecting distinct mechanisms that influence energy consumption:
 1. **Communication and Middleware Configuration**: DDS settings, QoS policies, and transport mechanisms.
