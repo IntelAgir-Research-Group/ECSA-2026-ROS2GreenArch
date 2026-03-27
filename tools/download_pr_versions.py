@@ -4,7 +4,7 @@ import re
 import time
 
 # --- CONFIGURAÇÕES ---
-# Substitua pelo seu token gerado no passo anterior
+# Substitua pelo seu token gerado 
 GITHUB_TOKEN = "SEU_TOKEN_AQUI"
 BASE_URL = "https://api.github.com/repos"
 OUTPUT_DIR = "analise_pr_ros2"
