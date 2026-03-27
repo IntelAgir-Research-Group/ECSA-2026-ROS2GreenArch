@@ -1,0 +1,2478 @@
+,ID,Distribution_ID,Meta-ticket,Pull Requests,Merged,Documented,Tipo,Classificação,Descrição:,Files:,Commit,O que faz,Trecho de Código,Arquivo(s),Arquivos (Todos),Documentação Sobre,,Validação ,
+,DP16,D1,https://github.com/ros2/ros2/issues/607,https://github.com/ros2/rosidl_python/pull/35,YES,,"python vector management; external libraries
+
+
+NumPy integration
+
+Performance optimization
+
+Serialization efficiency
+
+Array handling",[data structure],"__slots__ limita os atributos permitidos na classe, removendo a necessidade de um __dict__.
+
+Vantagens:
+Menor uso de memória.
+Acesso a atributos mais rápido.
+
+Em sistemas que criam milhares de mensagens por segundo, como no ROS 2, essa otimização reduz consumo de memória e melhora o desempenho geral.",https://github.com/ros2/rosidl_python/pull/35/files,49ad13c023681d2c53e506a0d8b17d80ebcaa691,"Cada mensagem .msg precisa ser traduzida para IDL, do DDS e para o tipo de dado da linguagem de programação usada para implementar o nó/node.
+
+Neste caso, o rosidl_genrator_py faz a tradução para classes Python.
+
+
+Esta modificação otimizou o desempenho no ROS 2 ao alterar o mapeamento de tipos: arrays de tamanho fixo passaram a usar numpy.ndarray e sequências (tamanho variável) adotaram array.array. Isso eliminou gargalos de processamento em callbacks, reduzindo drasticamente o uso de CPU ao manipular grandes volumes de dados.","SPECIAL_NESTED_BASIC_TYPES = {
+    'float': {'dtype': 'numpy.float32', 'type_code': 'f'},
+    'double': {'dtype': 'numpy.float64', 'type_code': 'd'},
+    'int8': {'dtype': 'numpy.int8', 'type_code': 'b'},
+    'uint8': {'dtype': 'numpy.uint8', 'type_code': 'B'},
+    'int16': {'dtype': 'numpy.int16', 'type_code': 'h'},
+    'uint16': {'dtype': 'numpy.uint16', 'type_code': 'H'},
+    'int32': {'dtype': 'numpy.int32', 'type_code': 'i'},
+    'uint32': {'dtype': 'numpy.uint32', 'type_code': 'I'},
+    'int64': {'dtype': 'numpy.int64', 'type_code': 'q'},
+    'uint64': {'dtype': 'numpy.uint64', 'type_code': 'Q'},
+}
+
+
+
+    if (
+        isinstance(type_.basetype, BasicType) and
+        type_.basetype.type in SPECIAL_NESTED_BASIC_TYPES
+    ):
+        if isinstance(type_, Array):
+            return 'numpy.array((%s, ), dtype=%s)' % (
+                ', '.join(py_values),
+                SPECIAL_NESTED_BASIC_TYPES[type_.basetype.type]['dtype'])
+        if isinstance(type_, Sequence):
+            return ""array.array('%s', (%s, ))"" % (
+                SPECIAL_NESTED_BASIC_TYPES[type_.basetype.type]['type_code'],
+                ', '.join(py_values))
+        assert False",rosidl_generator_py/rosidl_generator_py/generate_py_impl.py,,https://docs.ros.org/en/rolling/Concepts/Advanced/About-Internal-Interfaces.html,,OK,
+,DP18,D1,https://github.com/ros2/ros2/issues/649,https://github.com/ros2/rclcpp/pull/628,YES,,"Subscription count API, Publisher–subscriber, 
+Intra-process communication, rclcpp node
+
+Waitable integration
+
+rcl_wait_set_t management
+
+Dynamic event handling
+
+Executor interface extension",[intraprocess management],"Método interno nos publicadores para obter a contagem de assinantes intraprocesso.
+Método adicionado no gerenciador de intraprocesso, relacionado ao ponto anterior.
+Método de configuração de intraprocesso modificado nos publicadores.
+API pública adicionada para contagem de publicadores nos assinantes.
+Testes verificando todas as contagens.
+Código adicionado para remover assinantes e publicadores do gerenciador de intraprocesso.",https://github.com/ros2/rclcpp/pull/628/files,5b8bae03201c9515f92417672ee9ae36f96a0911,"O ROS 2 fazia cópia extra da mensagem mesmo quando isso não era necessário. Agora, usando contadores de assinantes, o sistema consegue decidir quando pular essa cópia (melhorando desempenho.) API pública nos publicadores para obter a contagem de assinantes.
+
+
+
+Esta modificação introduz métodos na API do rclcpp para consultar a contagem de entidades pareadas. Foram implementados get_subscription_count() e get_intra_process_subscription_count() em PublisherBase, além de get_publisher_count() em SubscriptionBase, permitindo monitorar conexões inter-processo e intra-processo de forma programática no ROS 2.","  size_t
+  get_subscription_count(uint64_t intra_process_publisher_id) const
+  {
+    auto publisher_it = publishers_.find(intra_process_publisher_id);
+    if (publisher_it == publishers_.end()) {
+      // Publisher is either invalid or no longer exists.
+      return 0;
+    }
+    auto publisher = publisher_it->second.publisher.lock();
+    if (!publisher) {
+      throw std::runtime_error(""publisher has unexpectedly gone out of scope"");
+    }
+    auto sub_map_it = subscription_ids_by_topic_.find(publisher->get_topic_name());
+    if (sub_map_it == subscription_ids_by_topic_.end()) {
+      // No intraprocess subscribers
+      return 0;
+    }
+    return sub_map_it->second.size();
+  }
+
+
+
+
+size_t
+PublisherBase::get_subscription_count() const
+{
+  size_t inter_process_subscription_count = 0;
+
+  rmw_ret_t status = rcl_publisher_get_subscription_count(
+    &publisher_handle_,
+    &inter_process_subscription_count);
+
+  if (RCL_RET_PUBLISHER_INVALID == status) {
+    rcl_reset_error();  /* next call will reset error message if not context */
+    if (rcl_publisher_is_valid_except_context(&publisher_handle_)) {
+      rcl_context_t * context = rcl_publisher_get_context(&publisher_handle_);
+      if (nullptr != context && !rcl_context_is_valid(context)) {
+        /* publisher is invalid due to context being shutdown */
+        return 0;
+      }
+    }
+  }
+  if (RCL_RET_OK != status) {
+    rclcpp::exceptions::throw_from_rcl_error(status, ""failed to get get subscription count"");
+  }
+  return inter_process_subscription_count;
+}
+
+size_t
+PublisherBase::get_intra_process_subscription_count() const
+{
+  auto ipm = weak_ipm_.lock();
+  if (!use_intra_process_) {
+    return 0;
+  }
+  if (!ipm) {
+
+
+
+
+
+
+size_t
+SubscriptionBase::get_publisher_count() const
+{
+  size_t inter_process_publisher_count = 0;
+
+  rmw_ret_t status = rcl_subscription_get_publisher_count(
+    subscription_handle_.get(),
+    &inter_process_publisher_count);
+
+  if (RCL_RET_OK != status) {
+    rclcpp::exceptions::throw_from_rcl_error(status, ""failed to get get publisher count"");
+  }
+  return inter_process_publisher_count;
+","rclcpp/include/rclcpp/intra_process_manager_impl.hpp
+
+rclcpp/src/rclcpp/publisher.cpp
+
+rclcpp/include/rclcpp/subscription.hpp",,https://design.ros2.org/articles/intraprocess_communications.html,,OK,
+,DP18,D1,https://github.com/ros2/ros2/issues/649,https://github.com/ros2/rclcpp/pull/690,YES,,"IntraProcessManager, MappedRingBuffer, SharedPtr, Performance
+
+
+memory_allocation
+
+memory_usage
+
+allocation_tracking
+
+performance_test",[intraprocess management],"Melhoria do IntraProcessManager, que agora permite armazenar unique_ptr quanto shared_ptr",https://github.com/ros2/rclcpp/pull/690/files,872294b6bf8aa58de1bc132c71c8c14450a51873,"Novo IntraProcessManager capaz de armazenar mensagens em std::unique_ptr ou std::shared_ptr foi introduzido. Isso adiciona a possibilidade de compartilhar a posse de uma mensagem entre múltiplas assinaturas.
+
+
+GPT: Este PR adiciona suporte a nós composáveis no launch_ros, permitindo definir contêineres de componentes e carregar nós dinamicamente via arquivos de launch. Isso possibilita executar múltiplos nós no mesmo processo, melhorando modularidade e eficiência (ex.: comunicação intra-processo).
+
+ O PR introduz novas **classes de ação** no `launch_ros`, como `ComposableNodeContainer` e `LoadComposableNodes`, além da descrição `ComposableNode`. O código implementa a criação do processo contêiner, a resolução de parâmetros/remapeamentos e a chamada ao serviço ROS responsável por carregar plugins (`rclcpp_components`) dinamicamente no contêiner em tempo de execução.
+","void
+  do_intra_process_publish(uint64_t message_seq)
+  {
+    rcl_interfaces::msg::IntraProcessMessage ipm;
+    ipm.publisher_id = intra_process_publisher_id_;
+    ipm.message_sequence = message_seq;
+    auto status = rcl_publish(&intra_process_publisher_handle_, &ipm);
+    if (RCL_RET_PUBLISHER_INVALID == status) {
+      rcl_reset_error();  // next call will reset error message if not context
+      if (rcl_publisher_is_valid_except_context(&intra_process_publisher_handle_)) {
+        rcl_context_t * context = rcl_publisher_get_context(&intra_process_publisher_handle_);
+        if (nullptr != context && !rcl_context_is_valid(context)) {
+          // publisher is invalid due to context being shutdown
+          return;
+        }
+      }
+    }
+    if (RCL_RET_OK != status) {
+      rclcpp::exceptions::throw_from_rcl_error(status, ""failed to publish intra process message"");
+    }
+  }
+
+  uint64_t
+  store_intra_process_message(
+    uint64_t publisher_id,
+    std::shared_ptr<const MessageT> msg)
+  {
+    auto ipm = weak_ipm_.lock();
+    if (!ipm) {
+      throw std::runtime_error(
+              ""intra process publish called after destruction of intra process manager"");
+    }
+    if (!msg) {
+      throw std::runtime_error(""cannot publisher msg which is a null pointer"");
+    }
+    uint64_t message_seq =
+      ipm->template store_intra_process_message<MessageT, Alloc>(publisher_id, msg);
+    return message_seq;
+  }
+
+  uint64_t
+  store_intra_process_message(
+    uint64_t publisher_id,
+    std::unique_ptr<MessageT, MessageDeleter> msg)
+  {
+    auto ipm = weak_ipm_.lock();
+    if (!ipm) {
+      throw std::runtime_error(
+              ""intra process publish called after destruction of intra process manager"");
+    }
+    if (!msg) {
+      throw std::runtime_error(""cannot publisher msg which is a null pointer"");
+    }
+    uint64_t message_seq =
+      ipm->template store_intra_process_message<MessageT, Alloc>(publisher_id, std::move(msg));
+    return message_seq;
+  }
+
+
+
+
+#ifndef RCLCPP__PUBLISHER_BASE_HPP_
+#define RCLCPP__PUBLISHER_BASE_HPP_
+
+#include <rmw/error_handling.h>
+#include <rmw/rmw.h>
+
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <sstream>
+#include <string>
+
+#include ""rcl/publisher.h""
+
+#include ""rclcpp/macros.hpp""
+#include ""rclcpp/mapped_ring_buffer.hpp""
+#include ""rclcpp/type_support_decl.hpp""
+#include ""rclcpp/visibility_control.hpp""
+
+namespace rclcpp
+{
+
+// Forward declaration is used for friend statement.
+namespace node_interfaces
+{
+class NodeBaseInterface;
+class NodeTopicsInterface;
+}
+
+namespace intra_process_manager
+{
+/**
+ * IntraProcessManager is forward declared here, avoiding a circular inclusion between
+ * `intra_process_manager.hpp` and `publisher_base.hpp`.
+ */
+class IntraProcessManager;
+}
+
+class PublisherBase
+{
+  friend ::rclcpp::node_interfaces::NodeTopicsInterface;
+
+public:
+  RCLCPP_SMART_PTR_DEFINITIONS(PublisherBase)
+
+  /// Default constructor.
+  /**
+   * Typically, a publisher is not created through this method, but instead is created through a
+   * call to `Node::create_publisher`.
+   * \param[in] node_base A pointer to the NodeBaseInterface for the parent node.
+   * \param[in] topic The topic that this publisher publishes on.
+   * \param[in] type_support The type support structure for the type to be published.
+   * \param[in] publisher_options QoS settings for this publisher.
+   */
+  RCLCPP_PUBLIC
+  PublisherBase(
+    rclcpp::node_interfaces::NodeBaseInterface * node_base,
+    const std::string & topic,
+    const rosidl_message_type_support_t & type_support,
+    const rcl_publisher_options_t & publisher_options);
+
+  RCLCPP_PUBLIC
+  virtual ~PublisherBase();
+
+  /// Get the topic that this publisher publishes on.
+  /** \return The topic name. */
+  RCLCPP_PUBLIC
+  const char *
+  get_topic_name() const;
+
+  /// Get the queue size for this publisher.
+  /** \return The queue size. */
+  RCLCPP_PUBLIC
+  size_t
+  get_queue_size() const;
+
+  /// Get the global identifier for this publisher (used in rmw and by DDS).
+  /** \return The gid. */
+  RCLCPP_PUBLIC
+  const rmw_gid_t &
+  get_gid() const;
+
+  /// Get the global identifier for this publisher used by intra-process communication.
+  /** \return The intra-process gid. */
+  RCLCPP_PUBLIC
+  const rmw_gid_t &
+  get_intra_process_gid() const;
+
+  /// Get the rcl publisher handle.
+  /** \return The rcl publisher handle. */
+  RCLCPP_PUBLIC
+  rcl_publisher_t *
+  get_publisher_handle();
+
+  /// Get the rcl publisher handle.
+  /** \return The rcl publisher handle. */
+  RCLCPP_PUBLIC
+  const rcl_publisher_t *
+  get_publisher_handle() const;
+
+  /// Get subscription count
+  /** \return The number of subscriptions. */
+  RCLCPP_PUBLIC
+  size_t
+  get_subscription_count() const;
+
+  /// Get intraprocess subscription count
+  /** \return The number of intraprocess subscriptions. */
+  RCLCPP_PUBLIC
+  size_t
+  get_intra_process_subscription_count() const;
+
+  /// Get the actual QoS settings, after the defaults have been determined.
+  /**
+   * The actual configuration applied when using RMW_QOS_POLICY_*_SYSTEM_DEFAULT
+   * can only be resolved after the creation of the publisher, and it
+   * depends on the underlying rmw implementation.
+   * If the underlying setting in use can't be represented in ROS terms,
+   * it will be set to RMW_QOS_POLICY_*_UNKNOWN.
+   * May throw runtime_error when an unexpected error occurs.
+   * \return The actual qos settings.
+   */
+  RCLCPP_PUBLIC
+  rmw_qos_profile_t
+  get_actual_qos() const;
+
+  /// Compare this publisher to a gid.
+  /**
+   * Note that this function calls the next function.
+   * \param[in] gid Reference to a gid.
+   * \return True if the publisher's gid matches the input.
+   */
+  RCLCPP_PUBLIC
+  bool
+  operator==(const rmw_gid_t & gid) const;
+
+  /// Compare this publisher to a pointer gid.
+  /**
+   * A wrapper for comparing this publisher's gid to the input using rmw_compare_gids_equal.
+   * \param[in] gid A pointer to a gid.
+   * \return True if this publisher's gid matches the input.
+   */
+  RCLCPP_PUBLIC
+  bool
+  operator==(const rmw_gid_t * gid) const;
+
+  using IntraProcessManagerSharedPtr =
+    std::shared_ptr<rclcpp::intra_process_manager::IntraProcessManager>;
+
+  /// Implementation utility function that creates a typed mapped ring buffer.
+  RCLCPP_PUBLIC
+  mapped_ring_buffer::MappedRingBufferBase::SharedPtr
+  virtual make_mapped_ring_buffer(size_t size) const;
+
+  /// Implementation utility function used to setup intra process publishing after creation.
+  RCLCPP_PUBLIC
+  void
+  setup_intra_process(
+    uint64_t intra_process_publisher_id,
+    IntraProcessManagerSharedPtr ipm,
+    const rcl_publisher_options_t & intra_process_options);
+
+protected:
+  std::shared_ptr<rcl_node_t> rcl_node_handle_;
+
+  rcl_publisher_t publisher_handle_ = rcl_get_zero_initialized_publisher();
+  rcl_publisher_t intra_process_publisher_handle_ = rcl_get_zero_initialized_publisher();
+
+  using IntraProcessManagerWeakPtr =
+    std::weak_ptr<rclcpp::intra_process_manager::IntraProcessManager>;
+  bool intra_process_is_enabled_;
+  IntraProcessManagerWeakPtr weak_ipm_;
+  uint64_t intra_process_publisher_id_;
+
+  rmw_gid_t rmw_gid_;
+  rmw_gid_t intra_process_rmw_gid_;
+};
+
+}  // namespace rclcpp
+
+#endif  // RCLCPP__PUBLISHER_BASE_HPP_
+
+
+
+
+
+
+uint64_t
+IntraProcessManager::add_publisher(
+  rclcpp::PublisherBase::SharedPtr publisher,
+  size_t buffer_size)
+{
+  auto id = IntraProcessManager::get_next_unique_id();
+  size_t size = buffer_size > 0 ? buffer_size : publisher->get_queue_size();
+  auto mrb = publisher->make_mapped_ring_buffer(size);
+  impl_->add_publisher(id, publisher, mrb, size);
+  if (!mrb) {
+    throw std::runtime_error(""failed to create a mapped ring buffer"");
+  }
+  return id;
+}","rcl/test/rcl/test_memory.cpp
+rcl/test/CMakeLists.txt
+rcl/test/parsest.py
+
+",,https://docs.google.com/document/d/1XldfcBP0C8Zb8e4wMcks4zcfvzzE8CRhDPKwn-ZGGNs/edit?tab=t.0#heading=h.vzf1rhgaofbt,,OK,Ja tem alguns graficos que podemos usar
+,DP19,D1,https://github.com/ros2/launch_ros/issues/6,https://github.com/ros2/launch_ros/pull/9,YES,,"ComposableNodeContainer, LoadComposableNodes, LaunchActions, Composition
+
+
+Lifecycle Node integration
+
+State transition management
+
+Launch-file-based control
+
+Event-driven triggers",[orchestration][composition],"lançar múltiplos nós C++ (nodes) que foram projetados para serem ""componíveis"" (composable) dentro de um único processo de sistema operacional",https://github.com/ros2/launch_ros/pull/9/files,40900d7afd44279e57fc7fe3918f776fa9d6c87d,"Nó Componível: Um nó escrito em C++ que pode ser instanciado e executado em um processo existente.
+Container Process (Processo Contêiner): Um único executável que hospeda vários nós. Ao manter os nós no mesmo processo, a comunicação entre eles pode usar a Comunicação Intra-Processo (IPC).
+
+
+Este PR introduz suporte a nós compostos no sistema de lançamento do ROS 2. Ele adiciona ações como ComposableNodeContainer e LoadComposableNodes, além de descrições para ComposableNode, permitindo carregar dinamicamente múltiplos componentes em um único processo por meio de serviços, otimizando a comunicação intra-processo via arquivos de launch.","from typing import List
+from typing import Optional
+
+from launch.action import Action
+from launch.launch_context import LaunchContext
+from launch.some_substitutions_type import SomeSubstitutionsType
+
+from .node import Node
+
+from ..descriptions import ComposableNode
+
+
+class ComposableNodeContainer(Node):
+    """"""Action that executes a container ROS node for composable ROS nodes.""""""
+
+    def __init__(
+        self,
+        *,
+        node_name: SomeSubstitutionsType,
+        node_namespace: SomeSubstitutionsType,
+        composable_node_descriptions: Optional[List[ComposableNode]] = None,
+        **kwargs
+    ) -> None:
+        """"""
+        Construct a ComposableNodeContainer action.
+        Most arguments are forwarded to :class:`launch_ros.actions.Node`, so see the documentation
+        of that class for further details.
+        :param: node_name the name of the node, mandatory for full container node name resolution
+        :param: node_namespace the ros namespace for this Node, mandatory for full container node
+           name resolution
+        :param composable_node_descriptions: optional descriptions of composable nodes to be loaded
+        """"""
+        super().__init__(node_name=node_name, node_namespace=node_namespace, **kwargs)
+        self.__composable_node_descriptions = composable_node_descriptions
+
+    def execute(self, context: LaunchContext) -> Optional[List[Action]]:
+        """"""
+        Execute the action.
+        Most work is delegated to :meth:`launch_ros.actions.Node.execute`, except for the
+        composable nodes load action if it applies.
+        """"""
+        load_actions = None  # type: Optional[List[Action]]
+        if self.__composable_node_descriptions is not None:
+            from .load_composable_nodes import LoadComposableNodes
+            load_actions = [LoadComposableNodes(
+                composable_node_descriptions=self.__composable_node_descriptions,
+                target_container=self
+            )]
+        container_actions = super().execute(context)  # type: Optional[List[Action]]
+        if container_actions is not None and load_actions is not None:
+            return container_actions + load_actions
+        if container_actions is not None:
+            return container_actions
+        if load_actions is not None:
+            return load_actions
+        return None
+
+
+
+
+
+
+from typing import List
+from typing import Optional
+
+import composition_interfaces.srv
+
+from launch.action import Action
+from launch.actions import RegisterEventHandler
+from launch.event_handlers.on_process_start import OnProcessStart
+from launch.events.process import ProcessStarted
+from launch.launch_context import LaunchContext
+import launch.logging
+from launch.utilities import ensure_argument_type
+from launch.utilities import perform_substitutions
+
+from .composable_node_container import ComposableNodeContainer
+
+from ..descriptions import ComposableNode
+from ..utilities import evaluate_parameters
+from ..utilities import to_parameters_list
+
+
+class LoadComposableNodes(Action):
+    """"""Action that loads composable ROS nodes into a running container.""""""
+
+    def __init__(
+        self,
+        *,
+        composable_node_descriptions: List[ComposableNode],
+        target_container: ComposableNodeContainer,
+        **kwargs,
+    ) -> None:
+        """"""
+        Construct a LoadComposableNodes action.
+
+        The container node is expected to provide a `~/_container/load_node` service for
+        loading purposes.
+        Loading will be performed sequentially.
+
+        :param composable_node_descriptions: descriptions of composable nodes to be loaded
+        :param target_container: the container to load the nodes into
+        """"""
+        ensure_argument_type(
+            target_container,
+            ComposableNodeContainer,
+            'target_container',
+            'LoadComposableNodes'
+        )
+        super().__init__(**kwargs)
+        self.__composable_node_descriptions = composable_node_descriptions
+        self.__target_container = target_container
+        self.__logger = launch.logging.get_logger(__name__)
+
+    def _load_node(
+        self,
+        composable_node_description: ComposableNode,
+        context: LaunchContext
+    ) -> None:
+        """"""
+        Load node synchronously.
+
+        :param composable_node_description: description of composable node to be loaded
+        :param context: current launch context
+        """"""
+        while not self.__rclpy_load_node_client.wait_for_service(timeout_sec=1.0):
+            if context.is_shutdown:
+                self.__logger.warning(
+                    ""Abandoning wait for the '{}' service, due to shutdown."".format(
+                        self.__rclpy_load_node_client.srv_name
+                    )
+                )
+                return
+        request = composition_interfaces.srv.LoadNode.Request()
+        request.package_name = perform_substitutions(
+            context, composable_node_description.package
+        )
+        request.plugin_name = perform_substitutions(
+            context, composable_node_description.node_plugin
+        )
+        if composable_node_description.node_name is not None:
+            request.node_name = perform_substitutions(
+                context, composable_node_description.node_name
+            )
+        if composable_node_description.node_namespace is not None:
+            request.node_namespace = perform_substitutions(
+                context, composable_node_description.node_namespace
+            )
+        # request.log_level = perform_substitutions(context, node_description.log_level)
+        if composable_node_description.remappings is not None:
+            for from_, to in composable_node_description.remappings:
+                request.remap_rules.append('{}:={}'.format(
+                    perform_substitutions(context, list(from_)),
+                    perform_substitutions(context, list(to)),
+                ))
+        if composable_node_description.parameters is not None:
+            request.parameters = [
+                param.to_parameter_msg() for param in to_parameters_list(
+                    context, evaluate_parameters(
+                        context, composable_node_description.parameters
+                    )
+                )
+            ]
+        if composable_node_description.extra_arguments is not None:
+            request.extra_arguments = [
+                param.to_parameter_msg() for param in to_parameters_list(
+                    context, evaluate_parameters(
+                        context, composable_node_description.extra_arguments
+                    )
+                )
+            ]
+        response = self.__rclpy_load_node_client.call(request)
+        if not response.success:
+            self.__logger.error(
+                ""Failed to load node '{}' of type '{}' in container '{}': {}"".format(
+                    response.full_node_name if response.full_node_name else request.node_name,
+                    request.plugin_name, self.__target_container.node_name, response.error_message
+                )
+            )
+        self.__logger.info(""Loaded node '{}' in container '{}'"".format(
+            response.full_node_name, self.__target_container.node_name
+        ))
+
+    def _load_in_sequence(
+        self,
+        composable_node_descriptions: List[ComposableNode],
+        context: LaunchContext
+    ) -> None:
+        """"""
+        Load composable nodes sequentially.
+
+        :param composable_node_descriptions: descriptions of composable nodes to be loaded
+        :param context: current launch context
+        """"""
+        next_composable_node_description = composable_node_descriptions[0]
+        composable_node_descriptions = composable_node_descriptions[1:]
+        self._load_node(next_composable_node_description, context)
+        if len(composable_node_descriptions) > 0:
+            context.add_completion_future(
+                context.asyncio_loop.run_in_executor(
+                    None, self._load_in_sequence, composable_node_descriptions, context
+                )
+            )
+
+    def _on_container_start(
+        self,
+        event: ProcessStarted,
+        context: LaunchContext
+    ) -> Optional[List[Action]]:
+        """"""Load nodes on container process start.""""""
+        self._load_in_sequence(self.__composable_node_descriptions, context)
+        return None
+
+    def execute(
+        self,
+        context: LaunchContext
+    ) -> Optional[List[Action]]:
+        """"""Execute the action.""""""
+        # Create a client to load nodes in the target container.
+        self.__rclpy_load_node_client = context.locals.launch_ros_node.create_client(
+            composition_interfaces.srv.LoadNode, '{}/_container/load_node'.format(
+                self.__target_container.node_name
+            )
+        )
+        # Perform load action once the container has started.
+        return [RegisterEventHandler(
+            event_handler=OnProcessStart(
+                target_action=self.__target_container,
+                on_start=self._on_container_start,
+            )
+        )]","launch_ros/launch_ros/actions/composable_node_container.py
+
+launch_ros/launch_ros/actions/load_composable_nodes.py",,https://roscon.ros.org/2018/presentations/ROSCon2018_launch.pdf,,,
+,DP26,D1,"https://github.com/ros2/ros2/issues/590
+
+https://github.com/ros2/rmw/issues/159
+
+","https://github.com/eProsima/Fast-DDS/pull/332
+
+
+https://github.com/ros2/rcl/pull/366
+
+https://github.com/ros2/rosidl/pull/333
+
+https://github.com/ros2/rmw_implementation/pull/51",YES,,"memory usage, message publishing, memory allocations
+
+
+TCP Transport support
+
+WAN communication
+
+Service/Topic metadata
+
+Network protocols",[memory optimization],otimizar o uso de memória e eliminar alocações desnecessárias,"https://github.com/eProsima/Fast-DDS/pull/332/changes
+
+https://github.com/ros2/rcl/pull/366/changes
+
+https://github.com/ros2/rosidl/pull/333/changes
+
+https://github.com/ros2/rmw_implementation/pull/51/changes","2b253fe3ff6ed78beaa5bd54ae6fb6a62f7ee4a4
+
+db023d186dac9da0669c12845b1fc3476c10218f
+
+cbc2df9e5ec3a269d33cb3fdcefdb1220b87cb6d
+
+e52a7470912174070fe5894202a03df942d2c170","Parece que: implementa uma lógica de espera, verifica se o serviço está ativo, gerencia o tempo de espera
+
+O *Pull Request* **#366** do repositório **ros2/rcl** adiciona uma auditoria e testes para uso de memória durante publicação e recepção de mensagens, integrando novos casos de teste e scripts para detectar uso/consumo de memória em *publishers* e *subscriptions*, com foco em medir e validar o gerenciamento de memória no rcl. ","typedef struct RMW_PUBLIC_TYPE rmw_publisher_allocation_t
+{
+  const char * implementation_identifier;
+  void * data;
+} rmw_publisher_allocation_t;
+
+typedef struct RMW_PUBLIC_TYPE rmw_subscription_allocation_t
+{
+  const char * implementation_identifier;
+  void * data;
+} rmw_subscription_allocation_t;",rmw_implementation/src/functions.cpp,,https://gist.github.com/gonzodepedro/e3a4c2d496ef3cbe605e9d53bef61555,,,
+,DP27,D1,https://github.com/ros2/rclpy/issues/302,https://github.com/ros2/rcl/pull/418,YES,,"memory usage, message publishing, increasing steadily
+
+
+
+Time source abstraction
+
+Clock synchronization
+
+rcl_clock_t extension
+
+External time integration",[memory leak],Corrige vazamento de memória introduzido em #285.,https://github.com/ros2/rcl/pull/418/files,20fdf1b5b82a6b1dc23cc7bef643bf18dfdcd2c3,"Corrige vazamento de memória introduzido em #285.
+
+
+Esta modificação no repositório rcl corrige um vazamento de memória (memory leak) na função interna de limpeza do conjunto de espera (__wait_set_clean_up). A alteração garante que os recursos alocados para as entidades de espera sejam devidamente liberados quando o wait set é destruído ou reiniciado, melhorando a estabilidade do sistema","static void
+__wait_set_clean_up(rcl_wait_set_t * wait_set, rcl_allocator_t allocator)
+{
+  if (wait_set->subscriptions) {
+    rcl_ret_t ret = rcl_wait_set_resize(wait_set, 0, 0, 0, 0, 0);
+    (void)ret;  // NO LINT
+    assert(RCL_RET_OK == ret);  // Defensive, shouldn't fail with size 0.
+  }
+  rcl_ret_t ret = rcl_wait_set_resize(wait_set, 0, 0, 0, 0, 0);
+  (void)ret;  // NO LINT
+  assert(RCL_RET_OK == ret);  // Defensive, shouldn't fail with size 0.
+  if (wait_set->impl) {
+    allocator.deallocate(wait_set->impl, allocator.state);
+    wait_set->impl = NULL;",rcl/src/rcl/wait.c,,,,,
+,DP80,D2,https://github.com/ros2/ros2/issues/764,"https://github.com/ament/ament_cmake/pull/187
+
+https://github.com/colcon/colcon-core/pull/209",YES,,"Python module, improve performance, topological
+
+
+
+Environment hook fix
+
+Shell script portability
+
+Path handling optimization
+
+Plugin loading robustness
+",[orchestration],"O modelo antigo, ao configurar o ambiente ROS 2, o terminal tinha que executar centenas de scripts de shell. Cada script verificava se um caminho já estava no PATH para evitar duplicatas.
+Em workspaces grandes: Essa verificação repetitiva de texto dentro do shell é extremamente lenta, levando segundos ou até minutos em hardwares simples","https://github.com/ament/ament_cmake/pull/187/files
+
+https://github.com/colcon/colcon-core/pull/209/files","7e95d95f2fea05d274f5fe0f932bc145ab4927e6
+
+8fc78e3d07bdcb2e8f60f7292a1117277ecd3073","O custo de execução vem do fato de a verificação de duplicatas ser feita atualmente no shell, proponho mover essa lógica para o módulo Python existente.
+
+Testes preliminares indicam que a melhoria de desempenho
+
+Para o ament_cmake, a mudança adiciona suporte a propriedades de diretório em ament_package, permitindo que informações de build e instalação sejam propagadas corretamente entre subdiretórios. Já no colcon-core, a alteração introduz o argumento --event-handlers, possibilitando configurar dinamicamente como o sistema reporta o progresso das tarefas durante a execução.","
+from pathlib import Path
+
+from colcon_core.plugin_system import satisfies_version
+from colcon_core.shell import logger
+from colcon_core.shell import ShellExtensionPoint
+from colcon_core.shell.template import expand_template
+
+
+class DsvShell(ShellExtensionPoint):
+    """"""Generate `.dsv` files describing the intended environment change.""""""
+
+    # the priority needs to be higher than the default for primary shells
+    PRIORITY = 200
+
+    def __init__(self):  # noqa: D107
+        super().__init__()
+        satisfies_version(ShellExtensionPoint.EXTENSION_POINT_VERSION, '^2.0')
+
+    def create_prefix_script(self, prefix_path, merge_install):  # noqa: D102
+        pass
+
+    def create_package_script(
+        self, prefix_path, pkg_name, hooks
+    ):  # noqa: D102
+        pkg_env_path = prefix_path / 'share' / pkg_name / 'package.dsv'
+        logger.info(""Creating package descriptor '%s'"" % pkg_env_path)
+        expand_template(
+            Path(__file__).parent / 'template' / 'package.dsv.em',
+            pkg_env_path,
+            {
+                'hooks': hooks,
+            })
+
+    def create_hook_prepend_value(
+        self, env_hook_name, prefix_path, pkg_name, name, subdirectory,
+    ):  # noqa: D102
+        hook_path = prefix_path / 'share' / pkg_name / 'hook' / \
+            ('%s.dsv' % env_hook_name)
+        logger.info(""Creating environment descriptor '%s'"" % hook_path)
+        expand_template(
+            Path(__file__).parent / 'template' / 'hook_prepend_value.dsv.em',
+            hook_path,
+            {
+                'type_': 'prepend-non-duplicate',
+                'name': name,
+                'value': subdirectory,
+            })
+        return hook_path
+
+-----------------------------------------------------
+
+import argparse
+from collections import OrderedDict
+import os
+from pathlib import Path
+import sys
+
+
+@{assert shell_extension.FORMAT_STR_COMMENT_LINE is not None}@
+FORMAT_STR_COMMENT_LINE = '@(shell_extension.FORMAT_STR_COMMENT_LINE)'
+@{assert shell_extension.FORMAT_STR_SET_ENV_VAR is not None}@
+FORMAT_STR_SET_ENV_VAR = '@(shell_extension.FORMAT_STR_SET_ENV_VAR)'
+@{assert shell_extension.FORMAT_STR_USE_ENV_VAR is not None}@
+FORMAT_STR_USE_ENV_VAR = '@(shell_extension.FORMAT_STR_USE_ENV_VAR)'
+@{assert shell_extension.FORMAT_STR_INVOKE_SCRIPT is not None}@
+FORMAT_STR_INVOKE_SCRIPT = '@(shell_extension.FORMAT_STR_INVOKE_SCRIPT)'
+
+DSV_TYPE_PREPEND_NON_DUPLICATE = 'prepend-non-duplicate'
+DSV_TYPE_PREPEND_NON_DUPLICATE_IF_EXISTS = 'prepend-non-duplicate-if-exists'
+DSV_TYPE_SOURCE = 'source'
+
+
+def main(argv=sys.argv[1:]):  # noqa: D103
+    parser = argparse.ArgumentParser(
+        description='Output shell commands for the packages in topological '
+                    'order')
+    parser.add_argument(
+        'primary_extension',
+        help='The file extension of the primary shell')
+    parser.add_argument(
+        'additional_extension', nargs='?',
+        help='The additional file extension to be considered')
+    parser.add_argument(
+        '--merged-install', action='store_true',
+        help='All install prefixes are merged into a single location')
+    args = parser.parse_args(argv)
+
+    packages = get_packages(Path(__file__).parent, args.merged_install)
+
+    ordered_packages = order_packages(packages)
+    for pkg_name in ordered_packages:
+        if _include_comments():
+            print(
+                FORMAT_STR_COMMENT_LINE.format_map(
+                    {'comment': 'Package: ' + pkg_name}))
+        prefix = os.path.abspath(os.path.dirname(__file__))
+        if not args.merged_install:
+            prefix = os.path.join(prefix, pkg_name)
+        for line in get_commands(
+            pkg_name, prefix, args.primary_extension,
+            args.additional_extension
+        ):
+            print(line)
+
+
+def get_packages(prefix_path, merged_install):
+    """"""
+    Find packages based on colcon-specific files created during installation.
+
+    :param Path prefix_path: The install prefix path of all packages
+    :param bool merged_install: The flag if the packages are all installed
+      directly in the prefix or if each package is installed in a subdirectory
+      named after the package
+    :returns: A mapping from the package name to the set of runtime
+      dependencies
+    :rtype: dict
+    """"""
+    packages = {}
+    # since importing colcon_core isn't feasible here the following constant
+    # must match colcon_core.location.get_relative_package_index_path()
+    subdirectory = 'share/colcon-core/packages'
+    if merged_install:
+        # return if workspace is empty
+        if not (prefix_path / subdirectory).is_dir():
+            return packages
+        # find all files in the subdirectory
+        for p in (prefix_path / subdirectory).iterdir():
+            if not p.is_file():
+                continue
+            if p.name.startswith('.'):
+                continue
+            add_package(p, packages)
+    else:
+        # for each subdirectory look for the package specific file
+        for p in prefix_path.iterdir():
+            if not p.is_dir():
+                continue
+            if p.name.startswith('.'):
+                continue
+            p = p / subdirectory / p.name
+            if p.is_file():
+                add_package(p, packages)
+
+    # remove unknown dependencies
+    pkg_names = set(packages.keys())
+    for k in packages.keys():
+        packages[k] = {d for d in packages[k] if d in pkg_names}
+
+    return packages
+
+
+def add_package(path, packages):
+    """"""
+    Check the path and if it exists extract the packages runtime dependencies.
+
+    :param Path path: The resource file containing the runtime dependencies
+    :param dict packages: A mapping from package names to the sets of runtime
+      dependencies to add to
+    """"""
+    content = path.read_text()
+    dependencies = set(content.split(os.pathsep) if content else [])
+    packages[path.name] = dependencies
+
+
+def order_packages(packages):
+    """"""
+    Order packages topologically.
+
+    :param Path path: The resource file containing the runtime dependencies
+    :param dict packages: A mapping from package name to the set of runtime
+      dependencies
+    :returns: The package names
+    :rtype: list
+    """"""
+    # select packages with no dependencies in alphabetical order
+    to_be_ordered = list(packages.keys())
+    ordered = []
+    while to_be_ordered:
+        pkg_names_without_deps = [
+            name for name in to_be_ordered if not packages[name]]
+        if not pkg_names_without_deps:
+            reduce_cycle_set(packages)
+            raise RuntimeError(
+                'Circular dependency between: ' + ', '.join(sorted(packages)))
+        pkg_names_without_deps.sort()
+        pkg_name = pkg_names_without_deps[0]
+        to_be_ordered.remove(pkg_name)
+        ordered.append(pkg_name)
+        # remove item from dependency lists
+        for k in list(packages.keys()):
+            if pkg_name in packages[k]:
+                packages[k].remove(pkg_name)
+    return ordered
+
+
+def reduce_cycle_set(packages):
+    """"""
+    Reduce the set of packages to the ones part of the circular dependency.
+
+    :param dict packages: A mapping from package name to the set of runtime
+      dependencies which is modified in place
+    """"""
+    last_depended = None
+    while len(packages) > 0:
+        # get all remaining dependencies
+        depended = set()
+        for pkg_name, dependencies in packages.items():
+            depended = depended.union(dependencies)
+        # remove all packages which are not dependent on
+        for name in list(packages.keys()):
+            if name not in depended:
+                del packages[name]
+        if last_depended:
+            # if remaining packages haven't changed return them
+            if last_depended == depended:
+                return packages.keys()
+        # otherwise reduce again
+        last_depended = depended
+
+
+def _include_comments():
+    # skipping comment lines when COLCON_TRACE is not set speeds up the
+    # processing especially on Windows
+    return bool(os.environ.get('COLCON_TRACE'))
+
+
+def get_commands(pkg_name, prefix, primary_extension, additional_extension):
+    commands = []
+    package_dsv_path = os.path.join(prefix, 'share', pkg_name, 'package.dsv')
+    if os.path.exists(package_dsv_path):
+        commands += process_dsv_file(
+            package_dsv_path, prefix, primary_extension, additional_extension)
+    return commands
+
+
+def process_dsv_file(
+    dsv_path, prefix, primary_extension=None, additional_extension=None
+):
+    commands = []
+    if _include_comments():
+        commands.append(FORMAT_STR_COMMENT_LINE.format_map({'comment': dsv_path}))
+    with open(dsv_path, 'r') as h:
+        content = h.read()
+    lines = content.splitlines()
+
+    basenames = OrderedDict()
+    for line in lines:
+        type_, remainder = line.split(';', 1)
+        if type_ != DSV_TYPE_SOURCE:
+            # handle non-source lines
+            commands += handle_dsv_types_except_source(
+                type_, remainder, prefix)
+        else:
+            # group remaining source lines by basename
+            path_without_ext, ext = os.path.splitext(remainder)
+            assert ext.startswith('.')
+            ext = ext[1:]
+            if ext in (primary_extension, additional_extension):
+                if path_without_ext not in basenames:
+                    basenames[path_without_ext] = set()
+                basenames[path_without_ext].add(ext)
+
+    # source primary-only files
+    if primary_extension:
+        for basename, extensions in basenames.items():
+            if len(extensions) == 1 and primary_extension in extensions:
+                commands += handle_dsv_type_source(
+                    basename + '.' + primary_extension, prefix,
+                    primary_extension, is_primary=True)
+
+    # source non-primary files
+    if additional_extension:
+        for basename, extensions in basenames.items():
+            if additional_extension in extensions:
+                commands += handle_dsv_type_source(
+                    basename + '.' + additional_extension, prefix,
+                    additional_extension, is_primary=False)
+
+    return commands
+
+
+def handle_dsv_types_except_source(type_, remainder, prefix):
+    commands = []
+    if type_ in (
+        DSV_TYPE_PREPEND_NON_DUPLICATE,
+        DSV_TYPE_PREPEND_NON_DUPLICATE_IF_EXISTS
+    ):
+        env_name, value = remainder.split(';', 1)
+        if not value:
+            value = prefix
+        elif not os.path.isabs(value):
+            value = os.path.join(prefix, value)
+        if (
+            type_ == DSV_TYPE_PREPEND_NON_DUPLICATE_IF_EXISTS and
+            not os.path.exists(value)
+        ):
+            comment = 'skip extending {env_name} with not existing path: ' \
+                '{value}'.format_map(locals())
+            if _include_comments():
+                commands.append(
+                    FORMAT_STR_COMMENT_LINE.format_map({'comment': comment}))
+        else:
+            commands += _prepend_unique_value(env_name, value)
+    else:
+        assert False, 'Unknown environment hook type: ' + type_
+    return commands
+
+
+def handle_dsv_type_source(script_path, prefix, extension, is_primary=False):
+    commands = []
+    if not os.path.isabs(script_path):
+        script_path = os.path.join(prefix, script_path)
+    script_path_no_ext = os.path.splitext(script_path)[0]
+    dsv_path = script_path_no_ext + '.dsv'
+    if os.path.exists(dsv_path):
+        if is_primary:
+            commands += process_dsv_file(
+                dsv_path, prefix, primary_extension=extension)
+    else:
+        commands += [
+            FORMAT_STR_INVOKE_SCRIPT.format_map(
+                {'prefix': prefix, 'script_path': script_path})]
+    return commands
+
+
+env_state = {}
+
+
+def _prepend_unique_value(name, value):
+    global env_state
+    if name not in env_state:
+        if name not in os.environ:
+            env_state[name] = set()
+        if os.environ.get(name):
+            env_state[name] = set(os.environ[name].split(os.pathsep))
+    if not env_state[name]:
+        extend = ''
+    else:
+        extend = os.pathsep + FORMAT_STR_USE_ENV_VAR.format_map(
+            {'name': name})
+    line = FORMAT_STR_SET_ENV_VAR.format_map(
+        {'name': name, 'value': value + extend})
+    if value not in env_state[name]:
+        env_state[name].add(value)
+    else:
+        if not _include_comments():
+            return []
+        line = FORMAT_STR_COMMENT_LINE.format_map({'comment': line})
+    return [line]
+
+
+if __name__ == '__main__':  # pragma: no cover
+    main()","colcon_core/shell/dsv.py
+
+colcon_core/shell/template/prefix_util.py.em",,,,,
+,DP81,D2,https://github.com/ros2/ros2/issues/798,https://github.com/ros2/rmw_cyclonedds/pull/60,YES,,"localhost, cyclonedds, communications
+
+
+Localhost-only support
+
+Communication restriction
+
+CycloneDDS integration
+
+Network isolation",[local communication],"introduziu a variável de ambiente ROS_LOCALHOST_ONLY, que permite restringir toda a comunicação do ROS 2 à própria máquina do usuário, impedindo que os dados sejam transmitidos pela rede física.",https://github.com/ros2/rmw_cyclonedds/pull/60/files,c6b7b79d715558d9c1621d210974450822b93c8b,"Permite restringir o tráfego de dados do ROS 2 apenas à própria máquina (localhost).
+
+
+Esta modificação implementa a API de contagem de correspondências para o middleware CycloneDDS. Foram adicionados os métodos rmw_publisher_get_subscription_count e rmw_subscription_get_publisher_count, que consultam o estado interno do grafo do DDS para retornar o número exato de assinantes ou publicadores pareados em um tópico específico, garantindo consistência com as interfaces de alto nível do ROS 2.","#if SUPPORT_LOCALHOST
+static void node_gone_from_domain_locked(dds_domainid_t did)
+{
+  /* The initial support for dds_create_domain in Cyclone results in domains that get
+     automatically deleted when the last participant in it disappears.  Later versions
+     return a handle and leave it in existence. */
+  CddsDomain & dom = gcdds.domains[did];
+  assert(dom.n_nodes > 0);
+  if (--dom.n_nodes == 0) {
+    if (dom.domain_handle > 0) {
+      dds_delete(dom.domain_handle);
+    }
+    gcdds.domains.erase(did);
+  }
+}
+
+static bool check_create_domain_locked(dds_domainid_t did, bool localhost_only)
+{
+  /* return true: n_nodes incremented, localhost_only set correctly, domain exists
+     ""      false: n_nodes unchanged, domain left intact if it already existed */
+  CddsDomain & dom = gcdds.domains[did];
+  if (dom.n_nodes != 0) {
+    /* Localhost setting must match */
+    if (localhost_only == dom.localhost_only) {
+      dom.n_nodes++;
+      return true;
+    } else {
+      RCUTILS_LOG_ERROR_NAMED(""rmw_cyclonedds_cpp"",
+        ""rmw_create_node: attempt at creating localhost-only and non-localhost-only nodes ""
+        ""in the same domain"");
+      return false;
+    }
+  } else {
+    dom.n_nodes = 1;
+    dom.localhost_only = localhost_only;
+
+    /* Localhost-only: set network interface address (shortened form of config would be
+       possible, too, but I think it is clearer to spell it out completely).  Empty
+       configuration fragments are ignored, so it is safe to unconditionally append a
+       comma. */
+    std::string config =
+      localhost_only ?
+      ""<CycloneDDS><Domain><General><NetworkInterfaceAddress>localhost</NetworkInterfaceAddress>""
+      ""</General></Domain></CycloneDDS>,""
+      :
+      """";
+
+    /* Emulate default behaviour of Cyclone of reading CYCLONEDDS_URI */
+    char * config_from_env = getenv(""CYCLONEDDS_URI"");
+    if (config_from_env != nullptr) {
+      config += std::string(config_from_env);
+    }
+
+    if ((dom.domain_handle = dds_create_domain(did, config.c_str())) < 0) {
+      RCUTILS_LOG_ERROR_NAMED(""rmw_cyclonedds_cpp"",
+        ""rmw_create_node: failed to create domain, error %s"", dds_strretcode(dom.domain_handle));
+      node_gone_from_domain_locked(did);
+      return false;
+    } else {
+      return true;
+    }
+  }
+}
+#else
+/* Dummy implementation to keep the rest of the code simpler */
+static void node_gone_from_domain_locked(dds_domainid_t did)
+{
+  static_cast<void>(did);
+}
+
+static bool check_create_domain_locked(dds_domainid_t did, bool localhost_only)
+{
+  static_cast<void>(did);
+  static_cast<void>(localhost_only);
+  return true;
+}
+#endif",rmw_cyclonedds_cpp/src/rmw_node.cpp,,,,,
+,DP88,D2,https://github.com/ros2/rclcpp/issues/825,https://github.com/ros2/rclcpp/pull/873,NO,,"single threaded, executor, CPU overhead, optimized
+
+
+StaticSingleThreadedExecutor
+
+CPU overhead reduction
+
+Wait-set optimization
+
+Deterministic execution",[cpu overhead],"Antes desta implementação, o SingleThreadedExecutor padrão apresentava um uso de CPU desproporcionalmente alto, especialmente em sistemas com muitos nós ou tópicos. A causa principal era a reconstrução constante da lista de entidades (subscrições, timers, etc.) a cada ciclo de execução, o que gerava um ""overhead"" de processamento desnecessário. Contribuímos com este executor estático como uma solução intermediária, até que outra alternativa esteja disponível ou que o executor existente seja otimizado. Nosso executor pode ser utilizado por usuários do ROS que possuem sistemas estáticos, com o objetivo de reduzir o overhead de CPU.",https://github.com/ros2/rclcpp/pull/873/files,f34d3c84916828fc3ba2a6fb14e4eb3f336a3e72,"O ganho no desempenho da CPU é de aproximadamente 13% em comparação com o StaticSingleThreadedExecutor e de 32% em comparação com o SingleThreadedExecutor 
+
+A intenção desta versão era mostrar as ineficiências do executor original. Com algumas alterações no código, conseguimos um ganho considerável de desempenho. No entanto, o executor agora está baseado em estruturas de dados e funções antigas que não se encaixam perfeitamente na implementação. Um executor adequadamente refatorado exigiria uma reescrita e reorganização mais ampla do rclcpp.
+
+Por isso, preferimos esperar até estarmos perto do lançamento do Foxy para então realizar o rebase e auxiliar na refatoração do executor..
+
+
+Esta modificação introduz o StaticExecutor, uma nova implementação de executor projetada para reduzir o overhead computacional. Diferente do executor padrão, ele utiliza uma estrutura de dados estática para armazenar os itens executáveis, otimizando o ciclo de varredura e melhorando o determinismo em sistemas com topologias de nós fixas.","#include ""rclcpp/executors/static_single_threaded_executor.hpp""
+#include ""rclcpp/scope_exit.hpp""
+
+using rclcpp::executors::StaticSingleThreadedExecutor;
+using rclcpp::executor::ExecutableList;
+
+StaticSingleThreadedExecutor::StaticSingleThreadedExecutor(
+  const rclcpp::executor::ExecutorArgs & args)
+: executor::Executor(args)
+{
+  entities_collector_ = std::make_shared<StaticExecutorEntitiesCollector>();
+}
+
+StaticSingleThreadedExecutor::~StaticSingleThreadedExecutor() {}
+
+void
+StaticSingleThreadedExecutor::spin()
+{
+  if (spinning.exchange(true)) {
+    throw std::runtime_error(""spin() called while already spinning"");
+  }
+  RCLCPP_SCOPE_EXIT(this->spinning.store(false); );
+
+  // Set memory_strategy_ and exec_list_ based on weak_nodes_
+  // Prepare wait_set_ based on memory_strategy_
+  entities_collector_->init(&wait_set_, memory_strategy_, &interrupt_guard_condition_);
+
+  while (rclcpp::ok(this->context_) && spinning.load()) {
+    // Refresh wait set and wait for work
+    entities_collector_->refresh_wait_set();
+    execute_ready_executables();
+  }
+}
+
+void
+StaticSingleThreadedExecutor::add_node(
+  rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_ptr, bool notify)
+{
+  // If the node already has an executor
+  std::atomic_bool & has_executor = node_ptr->get_associated_with_executor_atomic();
+  if (has_executor.exchange(true)) {
+    throw std::runtime_error(""Node has already been added to an executor."");
+  }
+
+  if (notify) {
+    // Interrupt waiting to handle new node
+    if (rcl_trigger_guard_condition(&interrupt_guard_condition_) != RCL_RET_OK) {
+      throw std::runtime_error(rcl_get_error_string().str);
+    }
+  }
+
+  entities_collector_->add_node(node_ptr);
+}
+
+void
+StaticSingleThreadedExecutor::add_node(std::shared_ptr<rclcpp::Node> node_ptr, bool notify)
+{
+  this->add_node(node_ptr->get_node_base_interface(), notify);
+}
+
+void
+StaticSingleThreadedExecutor::remove_node(
+  rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_ptr, bool notify)
+{
+  bool node_removed = entities_collector_->remove_node(node_ptr);
+
+  if (notify) {
+    // If the node was matched and removed, interrupt waiting
+    if (node_removed) {
+      if (rcl_trigger_guard_condition(&interrupt_guard_condition_) != RCL_RET_OK) {
+        throw std::runtime_error(rcl_get_error_string().str);
+      }
+    }
+  }
+
+  std::atomic_bool & has_executor = node_ptr->get_associated_with_executor_atomic();
+  has_executor.store(false);
+}
+
+void
+StaticSingleThreadedExecutor::remove_node(std::shared_ptr<rclcpp::Node> node_ptr, bool notify)
+{
+  this->remove_node(node_ptr->get_node_base_interface(), notify);
+}
+
+void
+StaticSingleThreadedExecutor::execute_ready_executables()
+{
+  // Execute all the ready subscriptions
+  for (size_t i = 0; i < wait_set_.size_of_subscriptions; ++i) {
+    if (i < entities_collector_->get_number_of_subscriptions()) {
+      if (wait_set_.subscriptions[i]) {
+        execute_subscription(entities_collector_->get_subscription(i));
+      }
+    }
+  }
+  // Execute all the ready timers
+  for (size_t i = 0; i < wait_set_.size_of_timers; ++i) {
+    if (i < entities_collector_->get_number_of_timers()) {
+      if (wait_set_.timers[i] && entities_collector_->get_timer(i)->is_ready()) {
+        execute_timer(entities_collector_->get_timer(i));
+      }
+    }
+  }
+  // Execute all the ready services
+  for (size_t i = 0; i < wait_set_.size_of_services; ++i) {
+    if (i < entities_collector_->get_number_of_services()) {
+      if (wait_set_.services[i]) {
+        execute_service(entities_collector_->get_service(i));
+      }
+    }
+  }
+  // Execute all the ready clients
+  for (size_t i = 0; i < wait_set_.size_of_clients; ++i) {
+    if (i < entities_collector_->get_number_of_clients()) {
+      if (wait_set_.clients[i]) {
+        execute_client(entities_collector_->get_client(i));
+      }
+    }
+  }
+  // Execute all the ready waitables
+  for (size_t i = 0; i < entities_collector_->get_number_of_waitables(); ++i) {
+    if (entities_collector_->get_waitable(i)->is_ready(&wait_set_)) {
+      entities_collector_->get_waitable(i)->execute();
+    }
+  }
+}
+",rclcpp/src/rclcpp/executors/static_single_threaded_executor.cpp,,"https://answers.ros.org/question/327477/
+
+https://github.com/nobleo/rclcpp-static-executor
+
+https://github.com/nobleo/ros2_performance
+
+https://github.com/ros2/rclcpp/issues/825
+
+https://github.com/irobot-ros/ros2-performance/tree/master/performances/benchmark
+
+https://discourse.openrobotics.org/t/singlethreadedexecutor-creates-a-high-cpu-overhead-in-ros-2/10077/7",,,
+,DP89,D2,https://github.com/ros2/ros2/issues/785,https://github.com/ros2/rmw_cyclonedds/pull/53,YES,,"zero-copy, API, cyclonedds, message transport
+
+
+Service/Client implementation
+
+Request/Response logic
+
+RMW API alignment
+
+Middleware interoperability",[network communication],"implementação da funcionalidade de Zero-Copy (cópia zero) através de Loaned Messages
+
+
+Varias APIs
+
+Este é da zero copy api for cyclonedds",https://github.com/ros2/rmw_cyclonedds/pull/53/files,fca78db7d49066aed278f19e569bbc44228f12f7,"Suporte a cópia zero e correções no Cyclonedds
+
+Esta modificação implementa o suporte para Serialização de Mensagens no rmw_cyclonedds. Ela introduz as funções rmw_get_serialized_message_size, rmw_serialize e rmw_deserialize, permitindo que o middleware manipule dados binários brutos diretamente. Isso é fundamental para o funcionamento do rosbag2, possibilitando a gravação e retransmissão de mensagens sem a sobrecarga de converter tipos C++ constantemente."," return ok ? RMW_RET_OK : RMW_RET_ERROR;
+}
+
+extern ""C"" rmw_ret_t rmw_publish_loaned_message(
+  const rmw_publisher_t * publisher,
+  void * ros_message,
+  rmw_publisher_allocation_t * allocation)
+{
+  (void) publisher;
+  (void) ros_message;
+  (void) allocation;
+
+  RMW_SET_ERROR_MSG(""rmw_publish_loaned_message not implemented for rmw_cyclonedds_cpp"");
+  return RMW_RET_UNSUPPORTED;
+}
+
+static const rosidl_message_type_support_t * get_typesupport(
+  const rosidl_message_type_support_t * type_supports)
+{
+@@ -1199,6 +1212,41 @@ rmw_ret_t rmw_publisher_get_actual_qos(const rmw_publisher_t * publisher, rmw_qo
+  }
+}
+
+extern ""C"" rmw_ret_t rmw_borrow_loaned_message(
+  const rmw_publisher_t * publisher,
+  const rosidl_message_type_support_t * type_support,
+  void ** ros_message)
+{
+  (void) publisher;
+  (void) type_support;
+  (void) ros_message;
+
+  RMW_SET_ERROR_MSG(""rmw_borrow_loaned_message not implemented for rmw_cyclonedds_cpp"");
+  return RMW_RET_UNSUPPORTED;
+}
+
+extern ""C"" rmw_ret_t rmw_return_loaned_message_from_publisher(
+  const rmw_publisher_t * publisher,
+  void * loaned_message)
+{
+  (void) publisher;
+  (void) loaned_message;
+
+  RMW_SET_ERROR_MSG(
+    ""rmw_return_loaned_message_from_publisher not implemented for rmw_cyclonedds_cpp"");
+  return RMW_RET_UNSUPPORTED;
+}
+
+extern ""C"" rmw_ret_t rmw_return_loaned_message(
+  const rmw_publisher_t * publisher,
+  void * loaned_message)
+{
+  /* https://github.com/ros2/rmw/pull/192 replaces this one with
+     rmw_return_loaned_message_from_publisher, but until that PR is accepted, this one is
+     needed to make things build & work */
+  return rmw_return_loaned_message_from_publisher(publisher, loaned_message);
+}
+
+extern ""C"" rmw_ret_t rmw_destroy_publisher(rmw_node_t * node, rmw_publisher_t * publisher)
+{
+  RET_WRONG_IMPLID(node);
+@@ -1511,6 +1559,60 @@ extern ""C"" rmw_ret_t rmw_take_serialized_message_with_info(
+  return rmw_take_ser_int(subscription, serialized_message, taken, message_info);
+}
+
+extern ""C"" rmw_ret_t rmw_take_loaned_message(
+  const rmw_subscription_t * subscription,
+  void ** loaned_message,
+  bool * taken,
+  rmw_subscription_allocation_t * allocation)
+{
+  (void) subscription;
+  (void) loaned_message;
+  (void) taken;
+  (void) allocation;
+
+  RMW_SET_ERROR_MSG(""rmw_take_loaned_message not implemented for rmw_cyclonedds_cpp"");
+  return RMW_RET_UNSUPPORTED;
+}
+
+extern ""C"" rmw_ret_t rmw_take_loaned_message_with_info(
+  const rmw_subscription_t * subscription,
+  void ** loaned_message,
+  bool * taken,
+  rmw_message_info_t * message_info,
+  rmw_subscription_allocation_t * allocation)
+{
+  (void) subscription;
+  (void) loaned_message;
+  (void) taken;
+  (void) message_info;
+  (void) allocation;
+
+  RMW_SET_ERROR_MSG(""rmw_take_loaned_message_with_info not implemented for rmw_cyclonedds_cpp"");
+  return RMW_RET_UNSUPPORTED;
+}
+
+extern ""C"" rmw_ret_t rmw_return_loaned_message_from_subscription(
+  const rmw_subscription_t * subscription,
+  void * loaned_message)
+{
+  (void) subscription;
+  (void) loaned_message;
+
+  RMW_SET_ERROR_MSG(
+    ""rmw_release_loaned_message_from_subscription not implemented for rmw_cyclonedds_cpp"");
+  return RMW_RET_UNSUPPORTED;
+}
+
+extern ""C"" rmw_ret_t rmw_release_loaned_message(
+  const rmw_subscription_t * subscription,
+  void * loaned_message)
+{
+  /* https://github.com/ros2/rmw/pull/192 replaces this one with
+     rmw_return_loaned_message_from_subscription, but until that PR is accepted, this one
+     is needed to make things build & work */
+  return rmw_return_loaned_message_from_subscription(subscription, loaned_message);
+}
+
+extern ""C"" rmw_ret_t rmw_take_event(
+  const rmw_event_t * event_handle, void * event_info,
+  bool * taken)",rmw_cyclonedds_cpp/src/rmw_node.cpp,,"https://roscon.ros.org/2019/talks/roscon2019_truezerocopy.pdf
+
+https://github.com/ros2/design/blob/gh-pages/articles/zero_copy.md
+
+https://github.com/ros2/design/pull/256",,,
+,DP96,D2,https://github.com/ros2/ros2/issues/734,https://github.com/ApexAI/performance_test/pull/75,YES,,"Cyclone DDS, FastRTPS
+
+
+
+Apex.OS performance framework
+
+Communication latency benchmarking
+
+Real-time metrics collection
+
+Middleware scalability testing",[network communication],"adiciona suporte inicial ao Cyclone DDS — “inicial” porque foi testado apenas de forma mínima em uma máquina virtual. Ela segue o mesmo padrão do código de suporte ao FastRTPS e ao Connext Micro, portanto existe a variável PERFORMANCE_TEST_CYCLONEDDS_ENABLED no arquivo CMake e uma macro no código-fonte que determina se o suporte será incluído, assim como a opção ""CycloneDDS"" para o parâmetro -c.",https://github.com/ApexAI/performance_test/pull/75/files,087a6112209c33627c9e0aa4f86aef056196371d,"Adiciona suporte inicial para Cyclone DDS — ""inicial"" porque foi testado minimamente apenas em uma máquina virtual. Ele segue o padrão do código de suporte para FastRTPS e Connext Micro, portanto, há uma PERFORMANCE_TEST_CYCLONEDDS_ENABLEDvariável no arquivo CMake e uma macro no código-fonte que determina se o suporte será incluído, bem como uma configuração de opção ""CycloneDDS"" para a opção ""-c"".
+
+
+Esta alteração introduz o suporte para o middleware CycloneDDS no framework de benchmarking. Foram implementadas classes de suporte que mapeiam as funcionalidades de publicação e assinatura do CycloneDDS para a interface de testes, permitindo a coleta de métricas de latência e throughput específicas para este provedor RMW em ambientes de alto desempenho.","""inflation_layer.cost_scaling_factor: 3.0
+obstacle_layer:
+enabled: True
+      static_layer:
+        map_subscribe_transient_local: True
+always_send_full_costmap: True
+observation_sources: scan
+scan:
+@@ -125,6 +127,8 @@ global_costmap:
+robot_radius: 0.22
+obstacle_layer:
+enabled: True
+      static_layer:
+        map_subscribe_transient_local: True
+always_send_full_costmap: True
+observation_sources: scan
+scan:""",performance_test/src/communication_abstractions/cyclonedds_communicator.hpp,,,,,
+,DP98,D2,https://github.com/ros-navigation/navigation2/issues/595,https://github.com/ros-navigation/navigation2/pull/1057,YES,,"Navigation2, Slam, cartographer, support, nav2
+
+
+Nav2 Lifecycle transition
+
+Controller server integration
+
+Action server management
+
+Navigation stack modularity",[multi packages],"Alterações para usar o Navigation 2 e o Slam em conjunto. Essas alterações foram testadas usando o Navigation 2 (Dashing-Devel), o Cartographer e um robô real (Turtlebot 3).",https://github.com/ros-navigation/navigation2/pull/1057/changes,7cc209da5ba2d775be19e90afc3a5c4d564379d0,"Compatibilidade com SLAM: Antes dessa PR, o Nav2 era fortemente acoplado ao uso do AMCL e do map_server (para fornecer mapas estáticos). Essa PR ajustou o sistema para que ele pudesse aceitar mapas e transformações vindos diretamente de algoritmos de SLAM, como oCartographer.
+
+Ajustes de QoS (Quality of Service): Foram feitas alterações nas configurações de QoS dos tópicos de mapa para garantir compatibilidade com os padrões publicados pelo Cartographer, permitindo que o Nav2 ""ouvisse"" as atualizações de mapa em tempo real de forma correta.
+
+
+Esta modificação introduz o sistema de Plugins de Custo no Nav2. Ela refatora o Costmap2D para carregar dinamicamente camadas (como estática, obstáculos e inflação) via pluginlib. Isso remove dependências fixas, permitindo que desenvolvedores adicionem comportamentos personalizados ao mapa de custo sem modificar o código central da pilha de navegação.","""inflation_layer.cost_scaling_factor: 3.0
+obstacle_layer:
+enabled: True
+      static_layer:
+        map_subscribe_transient_local: True
+always_send_full_costmap: True
+observation_sources: scan
+scan:
+@@ -125,6 +127,8 @@ global_costmap:
+robot_radius: 0.22
+obstacle_layer:
+enabled: True
+      static_layer:
+        map_subscribe_transient_local: True
+always_send_full_costmap: True
+observation_sources: scan
+scan:""",nav2_bringup/launch/nav2_params.yaml,,,,,
+,DP104,D2,https://github.com/ros2/sros2/issues/109,"https://github.com/ros2/sros2/pull/126
+
+https://github.com/ros2/sros2/pull/138
+
+https://github.com/ros2/sros2/pull/140",YES,,"openssl, subprocess, key, cryptography, 
+
+
+Keystore management
+
+Security policy automation
+
+Access control deployment
+
+SROS2 CLI enhancement
+
+CA certificate generation
+
+DDS-Security compliance",[cryptography],"A API sros2 faz chamadas de subprocesso para a CLI do OpenSSL do sistema para gerar pares de chaves x509 pública/privada e assinar para SMIME. Isso é um tanto improvisado, pois depende da consistência da CLI do OpenSSL entre diferentes ambientes de execução, tornando-se bastante frágil caso a CLI ou os padrões implícitos sejam alterados. Em vez disso, devemos buscar usar uma API de biblioteca de criptografia adequada para que possamos ter um controle mais preciso sobre o fornecimento de material de chave e o tratamento de erros para o usuário.","https://github.com/ros2/sros2/pull/126/files
+
+https://github.com/ros2/sros2/pull/138/files
+
+https://github.com/ros2/sros2/pull/140/files","b7acd8ff0a62d58e5afcd7318097b617618ff2a8
+
+782f79490c1e2ecc094029286ecbe446c121c141
+
+14c6ddcf3dcdcb5668d0236457454f6c29a22183","Modernizar  o SROS2, substituindo as chamadas externas ao OpenSSL via subprocess pelo uso direto da biblioteca Python cryptography, tornando o gerenciamento de criptografia mais integrado.
+
+Essas modificações no SROS2 aprimoram a segurança e a automação de permissões. O PR #126 melhora a geração de perfis e políticas; o #138 corrige a validação de permissões para enclaves; e o #140 automatiza a criação de keystores, facilitando a integração de segurança em sistemas distribuídos de forma consistente.","def _build_key_and_cert(subject_name, *, ca=False, ca_key=None, issuer_name=''):
+    if not issuer_name:
+        issuer_name = subject_name
+
+    # DDS-Security section 9.3.1 calls for prime256v1, for which SECP256R1 is an alias
+    private_key = ec.generate_private_key(ec.SECP256R1, cryptography_backend())
+    if not ca_key:
+        ca_key = private_key
+
+    if ca:
+        extension = x509.BasicConstraints(ca=True, path_length=1)
+    else:
+        extension = x509.BasicConstraints(ca=False, path_length=None)
+
+    now = datetime.datetime.now()
+    builder = x509.CertificateBuilder(
+        ).issuer_name(
+            issuer_name
+        ).serial_number(
+            x509.random_serial_number()
+        ).not_valid_before(
+            now
+        ).not_valid_after(
+            # TODO: This should not be hard-coded
+            now + datetime.timedelta(days=3650)
+        ).public_key(
+            private_key.public_key()
+        ).subject_name(
+            subject_name
+        ).add_extension(
+            extension, critical=ca
+        )
+    cert = builder.sign(ca_key, hashes.SHA256(), cryptography_backend())
+
+    return (cert, private_key)
+
+
+def _create_key_and_cert(
+        keystore_ca_cert_path, keystore_ca_key_path, identity, cert_path, key_path):
+    # Load the CA cert and key from disk
+    with open(keystore_ca_cert_path, 'rb') as f:
+        ca_cert = x509.load_pem_x509_certificate(f.read(), cryptography_backend())
+
+    with open(keystore_ca_key_path, 'rb') as f:
+        ca_key = serialization.load_pem_private_key(f.read(), None, cryptography_backend())
+
+    cert, private_key = _build_key_and_cert(
+        x509.Name([x509.NameAttribute(x509.oid.NameOID.COMMON_NAME, identity)]),
+        issuer_name=ca_cert.subject,
+        ca_key=ca_key)
+
+    _write_key(private_key, key_path)
+    _write_cert(cert, cert_path)","sros2/sros2/api/__init__.py
+
+sros2/package.xml",,,,,
+,DP117,D2,https://github.com/eProsima/Fast-DDS/issues/630,https://github.com/eProsima/Fast-DDS/pull/632,YES,,"buffer overflow, Fast DDS,
+
+
+Shared Memory Transport
+
+Intra-process performance
+
+Zero-copy communication
+
+Data sharing optimization ",[buffer overflow],"A expressão potencialmente causadora de estouro ""count * original_change_cit->getChange()->getFragmentSize()"" do tipo ""unsigned int"" (32 bits, sem sinal) é avaliada usando aritmética de 32 bits e, em seguida, usada em um contexto que espera uma expressão do tipo ""size_t"" (64 bits, sem sinal).
+(2) Correção do evento: | Para evitar o estouro, converta ""count"" ou ""original_change_cit->getChange()->getFragmentSize()"" para o tipo ""size_t"".",https://github.com/eProsima/Fast-DDS/pull/632/files,c1dfa89565d74bb976d0e58b7bedc331e5433945,"Corrige estouro de buffer 
+
+Esta modificação no Fast DDS implementa o suporte para o Data Sharing delivery, um mecanismo de memória compartilhada que permite a comunicação entre processos sem passar pela pilha de rede. Ele introduz o transporte DataSharing e gerencia buffers compartilhados para reduzir drasticamente a latência e o uso de CPU."," int s = getaddrinfo(name.c_str(), nullptr, &hints, &result);
+
+    if (s != 0)
+    if ( (s == 0) && (inet_ntop(AF_INET, result[0].ai_addr, str, INET_ADDRSTRLEN) != nullptr) )
+    {
+        return """";
+        freeaddrinfo(result);
+        return str;
+    }
+
+    if (inet_ntop(AF_INET, result[0].ai_addr, str, INET_ADDRSTRLEN) == nullptr)
+    {
+        return """";
+    }
+
+    return str;
+    freeaddrinfo(result);
+    return """";
+}
+
+std::string IPFinder::getIPv6Address(const std::string &name)
+@@ -334,15 +331,12 @@ std::string IPFinder::getIPv6Address(const std::string &name)
+
+    int s = getaddrinfo(name.c_str(), nullptr, &hints, &result);
+
+    if (s != 0)
+    {
+        return """";
+    }
+
+    if (inet_ntop(AF_INET6, result[0].ai_addr, str, INET6_ADDRSTRLEN) == nullptr)
+    if ( (s == 0) && (inet_ntop(AF_INET6, result[0].ai_addr, str, INET6_ADDRSTRLEN) != nullptr) )
+    {
+        return """";
+        freeaddrinfo(result);
+        return str;
+    }
+
+    return str;
+    freeaddrinfo(result);
+    return """";
+}",src/cpp/utils/IPFinder.cpp,,,,,
+,DP126,D2,https://github.com/eclipse-cyclonedds/cyclonedds/issues/212,https://github.com/eclipse-cyclonedds/cyclonedds/pull/222,YES,,"Improve, network interface , WiFi, multicast
+
+Shared memory transport
+
+Iceoryx integration
+
+Zero-copy communication
+
+Data-sharing efficiency",[data sharing],melhorar a performance e a confiabilidade do Cyclone DDS quando utilizado em redes sem fio,https://github.com/eclipse-cyclonedds/cyclonedds/pull/222/files,72de86df57cca188b90b5439fdb6971ea5888cda,"Passa a identificar se a interface de rede é Wi-Fi ou cabeada; em redes Wi-Fi, o multicast fica restrito apenas à descoberta de participantes, devido à baixa confiabilidade do multicast nesse tipo de rede.
+
+Deixa de assumir que pedidos de retransmissão ocorrerão em sequência, evitando assim o uso de multicast para retransmissões por padrão.
+
+Além disso, inclui um pequeno ajuste em testes: aumento de um timeout e remoção de uma porta fixa, mudanças que podem ter causado falhas intermitentes no teste de select timeout.
+
+Esta modificação implementa o suporte inicial para Shared Memory no CycloneDDS via integração com a biblioteca iceoryx. Ela introduz o transporte de transferência de dados por memória compartilhada (zero-copy), permitindo que processos na mesma máquina troquem mensagens volumosas sem a sobrecarga de serialização ou cópias na pilha de rede.","#if defined __linux
+#include <stdio.h>
+
+static enum ddsrt_iftype guess_iftype (const struct ifaddrs *sys_ifa)
+{
+  FILE *fp;
+  char ifnam[IFNAMSIZ + 1]; /* not sure whether IFNAMSIZ includes a terminating 0, can't be bothered */
+  int c;
+  size_t np;
+  enum ddsrt_iftype type = DDSRT_IFTYPE_UNKNOWN;
+  if ((fp = fopen (""/proc/net/wireless"", ""r"")) == NULL)
+    return type;
+  /* expected format:
+     :Inter-| sta-|   Quality        |   Discarded packets               | Missed | WE
+     : face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22
+     : wlan0: 0000   67.  -43.  -256        0      0      0      0      0        0
+     (where : denotes the start of the line)
+     SKIP_HEADER_1 skips up to and including the first newline; then SKIP_TO_EOL skips
+     up to and including the second newline, so the first line that gets interpreted is
+     the third.
+   */
+  enum { SKIP_HEADER_1, SKIP_WHITE, READ_NAME, SKIP_TO_EOL } state = SKIP_HEADER_1;
+  np = 0;
+  while (type != DDSRT_IFTYPE_WIFI && (c = fgetc (fp)) != EOF) {
+    switch (state) {
+      case SKIP_HEADER_1:
+        if (c == '\n') {
+          state = SKIP_TO_EOL;
+        }
+        break;
+      case SKIP_WHITE:
+        if (c != ' ' && c != '\t') {
+          ifnam[np++] = (char) c;
+          state = READ_NAME;
+        }
+        break;
+      case READ_NAME:
+        if (c == ':') {
+          ifnam[np] = 0;
+          if (strcmp (ifnam, sys_ifa->ifa_name) == 0)
+            type = DDSRT_IFTYPE_WIFI;
+          state = SKIP_TO_EOL;
+          np = 0;
+        } else if (np < sizeof (ifnam) - 1) {
+          ifnam[np++] = (char) c;
+        }
+        break;
+      case SKIP_TO_EOL:
+        if (c == '\n') {
+          state = SKIP_WHITE;
+        }
+        break;
+    }
+  }
+  fclose (fp);
+  return type;
+}
+#elif defined __APPLE__ /* probably works for all BSDs */
+#include <sys/ioctl.h>
+#include <sys/sockio.h>
+#include <net/if.h>
+#include <net/if_media.h>
+
+static enum ddsrt_iftype guess_iftype (const struct ifaddrs *sys_ifa)
+{
+  int sock;
+  if ((sock = socket (sys_ifa->ifa_addr->sa_family, SOCK_DGRAM, 0)) == -1)
+    return DDSRT_IFTYPE_UNKNOWN;
+
+  struct ifmediareq ifmr;
+  enum ddsrt_iftype type;
+  memset (&ifmr, 0, sizeof (ifmr));
+  ddsrt_strlcpy (ifmr.ifm_name, sys_ifa->ifa_name, sizeof (ifmr.ifm_name));
+  if (ioctl (sock, SIOCGIFMEDIA, (caddr_t) &ifmr) < 0)
+  {
+    type = DDSRT_IFTYPE_UNKNOWN;
+  }
+  else
+  {
+    switch (IFM_TYPE (ifmr.ifm_active))
+    {
+      case IFM_ETHER:
+      case IFM_TOKEN:
+      case IFM_FDDI:
+        type = DDSRT_IFTYPE_WIRED;
+        break;
+      case IFM_IEEE80211:
+        type = DDSRT_IFTYPE_WIFI;
+        break;
+      default:
+        type = DDSRT_IFTYPE_UNKNOWN;
+        break;
+    }
+  }
+  close (sock);
+  return type;
+}
+#else
+static enum ddsrt_iftype guess_iftype (const struct ifaddrs *sys_ifa)
+{
+  return DDSRT_IFTYPE_UNKNOWN;
+}
+#endif
+
+
+
+
+
+ else if (config.allowMulticast & AMC_DEFAULT)
+    {
+      /* default is dependent on network interface type: if multicast is believed to be flaky,
+         use multicast only for SPDP packets */
+      assert ((config.allowMulticast & ~AMC_DEFAULT) == 0);
+      if (gv.interfaces[gv.selected_interface].mc_flaky)
+      {
+        config.allowMulticast = AMC_SPDP;
+        DDS_LOG(DDS_LC_CONFIG, ""presumed flaky multicast, use for SPDP only\n"");
+      }
+      else
+      {
+        DDS_LOG(DDS_LC_CONFIG, ""presumed robust multicast support, use for everything\n"");
+        config.allowMulticast = AMC_TRUE;
+      }
+    }
+
+","src/ddsrt/src/ifaddrs/posix/ifaddrs.c
+
+
+src/core/ddsi/src/q_init.c",,,,,
+,DP158,D3,https://github.com/ros2/rosbag2/issues/232,"https://github.com/ros2/rosbag2/pull/308
+
+https://github.com/ros2/rosbag2/pull/529",YES,,"rosbag2, reader, writer, Python API
+
+Compression support
+
+SequentialWriter integration
+
+Storage plugin API
+
+Metadata expansion
+
+Message player logic",[multi-language],"A proposta visava criar uma interface Python completa para o rosbag2, que na época era fortemente baseado em C++ e oferecia suporte muito limitado em Python. O objetivo era permitir a abertura, leitura, filtragem e manipulação de bags diretamente em scripts Python, facilitando análises e exportações de dados. A motivação veio da ampla adoção do rosbag em Python no ROS 1, cuja ausência no ROS 2 dificultava o trabalho de análise de dados e criava uma barreira para desenvolvedores e pesquisadores.","https://github.com/ros2/rosbag2/pull/308/files
+
+https://github.com/ros2/rosbag2/pull/529/files","31a255120e1f4e2b0c86c2a01f2cc13062fc9914
+
+72d3b64bbafdbf806dd60e35715c33a1bc245547","Implementa funcionalidades iniciais de leitura para rosbag2_py. 
+
+Corrige o bug do rosbag2_py ao usar libc++
+
+As modificações no rosbag2 focam em extensibilidade e desempenho. O PR #308 introduz uma arquitetura de plugins para compressores, permitindo o uso de algoritmos como ZSTD. Já o #529 refatora a interface de armazenamento para suportar múltiplas instâncias de writer, facilitando a gravação de dados em sistemas com alta taxa de transferência.","#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+
+#include <memory>
+#include <string>
+#include <vector>
+
+#include ""rosbag2_compression/sequential_compression_reader.hpp""
+#include ""rosbag2_cpp/converter_options.hpp""
+#include ""rosbag2_cpp/readers/sequential_reader.hpp""
+#include ""rosbag2_cpp/reader.hpp""
+#include ""rosbag2_cpp/storage_options.hpp""
+#include ""rosbag2_storage/storage_filter.hpp""
+#include ""rosbag2_storage/topic_metadata.hpp""
+
+namespace rosbag2_py
+{
+
+template<typename T>
+class Reader
+{
+public:
+  Reader()
+  : reader_(std::make_unique<rosbag2_cpp::Reader>(std::make_unique<T>()))
+  {
+  }
+
+  void open(
+    rosbag2_cpp::StorageOptions & storage_options,
+    rosbag2_cpp::ConverterOptions & converter_options)
+  {
+    reader_->open(storage_options, converter_options);
+  }
+
+  bool has_next()
+  {
+    return reader_->has_next();
+  }
+
+  /// Return a tuple containing the topic name, the serialized ROS message, and
+  /// the timestamp.
+  pybind11::tuple read_next()
+  {
+    const auto next = reader_->read_next();
+    rcutils_uint8_array_t rcutils_data = *next->serialized_data.get();
+    std::string serialized_data(rcutils_data.buffer,
+      rcutils_data.buffer + rcutils_data.buffer_length);
+    return pybind11::make_tuple(
+      next->topic_name, pybind11::bytes(serialized_data), next->time_stamp);
+  }
+
+  /// Return a mapping from topic name to topic type.
+  std::vector<rosbag2_storage::TopicMetadata> get_all_topics_and_types()
+  {
+    return reader_->get_all_topics_and_types();
+  }
+
+  void set_filter(const rosbag2_storage::StorageFilter & storage_filter)
+  {
+    return reader_->set_filter(storage_filter);
+  }
+
+  void reset_filter()
+  {
+    reader_->reset_filter();
+  }
+
+protected:
+  std::unique_ptr<rosbag2_cpp::Reader> reader_;
+};
+}  // namespace rosbag2_py
+
+PYBIND11_MODULE(_reader, m) {
+  m.doc() = ""Python wrapper of the rosbag2_cpp reader API"";
+
+  pybind11::class_<rosbag2_py::Reader<rosbag2_cpp::readers::SequentialReader>>(
+    m, ""SequentialReader"")
+  .def(pybind11::init())
+  .def(""open"", &rosbag2_py::Reader<rosbag2_cpp::readers::SequentialReader>::open)
+  .def(""read_next"", &rosbag2_py::Reader<rosbag2_cpp::readers::SequentialReader>::read_next)
+  .def(""has_next"", &rosbag2_py::Reader<rosbag2_cpp::readers::SequentialReader>::has_next)
+  .def(
+    ""get_all_topics_and_types"",
+    &rosbag2_py::Reader<rosbag2_cpp::readers::SequentialReader>::get_all_topics_and_types)
+  .def(""set_filter"", &rosbag2_py::Reader<rosbag2_cpp::readers::SequentialReader>::set_filter)
+  .def(""reset_filter"", &rosbag2_py::Reader<rosbag2_cpp::readers::SequentialReader>::reset_filter);
+
+  pybind11::class_<rosbag2_py::Reader<rosbag2_compression::SequentialCompressionReader>>(
+    m, ""SequentialCompressionReader"")
+  .def(pybind11::init())
+  .def(""open"", &rosbag2_py::Reader<rosbag2_compression::SequentialCompressionReader>::open)
+  .def(
+    ""read_next"", &rosbag2_py::Reader<rosbag2_compression::SequentialCompressionReader>::read_next)
+  .def(""has_next"", &rosbag2_py::Reader<rosbag2_compression::SequentialCompressionReader>::has_next)
+  .def(
+    ""get_all_topics_and_types"",
+    &rosbag2_py::Reader<
+      rosbag2_compression::SequentialCompressionReader
+    >::get_all_topics_and_types)
+  .def(
+    ""set_filter"",
+    &rosbag2_py::Reader<rosbag2_compression::SequentialCompressionReader>::set_filter)
+  .def(
+    ""reset_filter"",
+    &rosbag2_py::Reader<rosbag2_compression::SequentialCompressionReader>::reset_filter);
+}","rosbag2_py/src/rosbag2_py/_reader.cpp
+
+rosbag2_py/src/rosbag2_py/_storage.cpp
+
+rosbag2_py/src/rosbag2_py/_writer.cpp",,https://github.com/ros2/rosbag2/blob/galactic/rosbag2_performance/rosbag2_performance_benchmarking/docs/rosbag2_performance_improvements.pdf,,,
+,DP299,D6,https://github.com/ros2/launch_ros/issues/294,https://github.com/ros2/launch_ros/pull/311,YES,,"composable nodes, condition,  supported
+
+Frontend Launch parsing
+
+Parameter substitution
+
+Launch file extensibility
+
+YAML/XML configuration",[launching],"Adiciona o parâmetro condition à ação de nós componíveis (composable nodes), resolvendo a issue #294. Atualmente, essa ação é suportada pelo ComposableNodeContainer, mas não pelo próprio ComposableNode.",https://github.com/ros2/launch_ros/pull/311/files,2d9c819dda8c61f5a6209848c0a4f319a394d1b1,"Adiciona o ""condition"" parâmetro à ação de nós compostos. 
+
+
+Esta modificação introduz o suporte para Parâmetros de Nós em arquivos XML e YAML no launch_ros. Ela implementa parsers específicos que permitem definir e carregar dicionários de parâmetros complexos diretamente via novos elementos de sintaxe, garantindo paridade funcional entre os diferentes front-ends de lançamento do ROS 2.","valid_composable_nodes = []
+        for node_object in self.__composable_node_descriptions:
+            if node_object.condition() is None or node_object.condition().evaluate(context):
+                valid_composable_nodes.append(node_object)
+        if (
+            self.__composable_node_descriptions is not None and
+            len(self.__composable_node_descriptions) > 0
+            valid_composable_nodes is not None and
+            len(valid_composable_nodes) > 0
+        ):
+            from .load_composable_nodes import LoadComposableNodes
+            # Perform load action once the container has started.
+            load_actions = [
+                LoadComposableNodes(
+                    composable_node_descriptions=self.__composable_node_descriptions,
+                    composable_node_descriptions=valid_composable_nodes,
+                    target_container=self
+                )
+            ]
+
+
+
+
+
+from typing import List
+from typing import Optional
+
+from launch.condition import Condition
+from launch.conditions import IfCondition, UnlessCondition
+from launch.frontend import Entity
+from launch.frontend import Parser
+from launch.some_substitutions_type import SomeSubstitutionsType
+@@ -43,6 +45,7 @@ def __init__(
+        parameters: Optional[SomeParameters] = None,
+        remappings: Optional[SomeRemapRules] = None,
+        extra_arguments: Optional[SomeParameters] = None,
+        condition: Optional[Condition] = None,
+    ) -> None:
+        """"""
+        Initialize a ComposableNode description.
+@@ -54,6 +57,7 @@ def __init__(
+        :param parameters: list of either paths to yaml files or dictionaries of parameters
+        :param remappings: list of from/to pairs for remapping names
+        :param extra_arguments: container specific arguments to be passed to the loaded node
+        :param condition: action will be executed if the condition evaluates to true
+        """"""
+        self.__package = normalize_to_list_of_substitutions(package)
+        self.__node_plugin = normalize_to_list_of_substitutions(plugin)
+@@ -78,6 +82,8 @@ def __init__(
+        if extra_arguments:
+            self.__extra_arguments = normalize_parameters(extra_arguments)
+
+        self.__condition = condition
+
+    @classmethod
+    def parse(cls, parser: Parser, entity: Entity):
+        """"""Parse composable_node.""""""
+@@ -88,6 +94,19 @@ def parse(cls, parser: Parser, entity: Entity):
+        kwargs['plugin'] = parser.parse_substitution(entity.get_attr('plugin'))
+        kwargs['name'] = parser.parse_substitution(entity.get_attr('name'))
+
+        if_cond = entity.get_attr('if', optional=True)
+        unless_cond = entity.get_attr('unless', optional=True)
+        if if_cond is not None and unless_cond is not None:
+            raise RuntimeError(""if and unless conditions can't be used simultaneously"")
+        if if_cond is not None:
+            kwargs['condition'] = IfCondition(
+                predicate_expression=parser.parse_substitution(if_cond)
+            )
+        if unless_cond is not None:
+            kwargs['condition'] = UnlessCondition(
+                predicate_expression=parser.parse_substitution(unless_cond)
+            )
+
+        namespace = entity.get_attr('namespace', optional=True)
+        if namespace is not None:
+            kwargs['namespace'] = parser.parse_substitution(namespace)
+@@ -158,3 +177,7 @@ def remappings(self) -> Optional[RemapRules]:
+    def extra_arguments(self) -> Optional[Parameters]:
+        """"""Get container extra arguments YAML files or dicts with substitutions to be performed.""""""
+        return self.__extra_arguments
+
+    def condition(self) -> Optional[Condition]:
+        """"""Getter for condition.""""""
+        return self.__condition","launch_ros/launch_ros/actions/composable_node_container.py
+
+launch_ros/launch_ros/descriptions/composable_node.py",,,,,
+,DP318,D6,https://github.com/ros2/rclcpp/issues/2029,"https://github.com/ros2/rclcpp/pull/2030
+
+https://github.com/ros2/rclcpp/pull/2032
+
+",YES,,"MultiThreadExecutor, threads
+
+Waitset thread-safety
+
+Subscription mutation guard
+
+Execution management fix
+
+Zero-copy middleware support
+
+Memory management optimization
+
+Middleware-level performance",[multi-threading],"Alltera o valor padrão do número de threads no MultiThreadedExecutor para que ele seja mais inteligente e seguro.
+
+A principal mudança é que, se o usuário não especificar um número de threads, o executor agora tentará usar o número de núcleos de CPU disponíveis no sistema, mas com uma salvaguarda para nunca usar menos de duas threads.","https://github.com/ros2/rclcpp/pull/2030/changes
+
+https://github.com/ros2/rclcpp/pull/2032/files","50de3b3366e3641c14ae91d8d5f81d0a7912b483
+
+12b4d93772da0a63073eee97f08192970bc45e27","Garante que o número de threads de um executor multithread seja pelo menos 2
+
+Esta modificação refatora o StaticExecutor para utilizar uma estrutura de dados indexada em vez de listas lineares na gestão de entidades prontas. A mudança otimiza a complexidade de busca de tarefas pendentes, reduzindo o custo computacional de agendamento. 
+I ntroduz o LoanedMessage, uma abstração para gerenciar mensagens via Zero-Copy. Ela permite que publicadores solicitem buffers diretamente do middleware, preencham os dados e os enviem sem cópias adicionais, otimizando drasticamente a performance em comunicações de alta latência ou com grandes volumes de dados.","number_of_threads_ = number_of_threads > 0 ?
+    number_of_threads :
+    std::max(std::thread::hardware_concurrency(), 2U);
+
+  if (number_of_threads_ == 1) {
+    RCLCPP_WARN(
+      rclcpp::get_logger(""rclcpp""),
+      ""MultiThreadedExecutor is used with a single thread.\n""
+      ""Use the SingleThreadedExecutor instead."");
+  } 
+
+
+
+
+
+*
+   * \param options common options for all executors
+   * \param number_of_threads number of threads to have in the thread pool,
+   *   the default 0 will use the number of cpu cores found instead
+   *   the default 0 will use the number of cpu cores found (minimum of 2)
+   * \param yield_before_execute if true std::this_thread::yield() is called
+   * \param timeout maximum time to wait
+   */",rclcpp/include/rclcpp/executors/multi_threaded_executor.hpp,,,,,
+,DP359,D7,https://github.com/ros2/rosbag2/issues/978,https://github.com/ros2/rosbag2/pull/1457,YES,,"compression, threads, priority
+
+Service recording support
+
+Request/Response logging
+
+Metadata extension
+
+Middleware-agnostic capture",[thread priority][cpu overhead],"Quando a compressão está ativada no rosbag2, o processo de compactar os dados pode consumir muitos recursos da CPU. Se a thread de compressão tiver uma prioridade baixa, ela pode não processar os dados rápido o suficiente, fazendo com que a fila de mensagens estoure e cause perda de dados.",https://github.com/ros2/rosbag2/pull/1457/files,2f5811353696bf61786f8b03706d36d5023e2a2c,"permite que o usuário defina uma prioridade específica para as threads responsáveis pela compressão, garantindo que o processo de escrita em disco não seja ""atropelado"" por outros processos menos críticos do sistema.
+
+
+
+Esta modificação introduz o suporte para múltiplos bancos de dados por arquivo de metadados no rosbag2. Ela refatora a estrutura de armazenamento para gerenciar URIs de arquivos de forma independente, permitindo que uma única sessão de gravação seja distribuída em vários arquivos, facilitando o gerenciamento de grandes volumes de dados."," // This must match THREAD_PRIORITY_IDLE, THREAD_PRIORITY_LOWEST...
+    int wanted_thread_priority = *compression_options_.thread_priority;
+    if (!SetThreadPriority(GetCurrentThread(), wanted_thread_priority)) {
+      ROSBAG2_COMPRESSION_LOG_WARN_STREAM(
+        ""Could not set thread priority of compression thread to: "" << wanted_thread_priority <<
+          "". Error code: "" << GetLastError());
+    } else {
+      auto detected_thread_priority = GetThreadPriority(GetCurrentThread());
+      if (detected_thread_priority == THREAD_PRIORITY_ERROR_RETURN) {
+        ROSBAG2_COMPRESSION_LOG_WARN_STREAM(
+          ""Failed to get current thread priority. Error code: "" << GetLastError());
+      } else if (wanted_thread_priority != detected_thread_priority) {
+        ROSBAG2_COMPRESSION_LOG_WARN_STREAM(
+          ""Could not set thread priority of compression thread to: "" <<
+            wanted_thread_priority << "". Detected thread priority: "" << detected_thread_priority);
+      }
+    }
+#else
+    int wanted_nice_value = *compression_options_.thread_priority;
+
+    errno = 0;
+int cur_nice_value = getpriority(PRIO_PROCESS, 0);
+ if (cur_nice_value == -1 && errno != 0) {
+      ROSBAG2_COMPRESSION_LOG_WARN_STREAM(
+        ""Could not set nice value of compression thread to: "" << wanted_nice_value <<
+          "" : Could not determine cur nice value"");
+    } else {
+      int new_nice_value = nice(wanted_nice_value - cur_nice_value);
+      if ((new_nice_value == -1 && errno != 0)) {
+        ROSBAG2_COMPRESSION_LOG_WARN_STREAM(
+          ""Could not set nice value of compression thread to: "" << wanted_nice_value <<
+            "". Error : "" << std::strerror(errno));
+      }
+    }
+#endif
+  }",rosbag2_compression/src/rosbag2_compression/sequential_compression_writer.cpp,,,,,
+,DP385,D7,https://github.com/ros2/rosbag2/issues/647,https://github.com/ros2/rosbag2/pull/1516,YES,,"Improve, performance, Sqlite, storage, bagfile
+
+
+Service playback support
+
+Mock service client
+
+Request/Response replaying
+
+Integration testing tools",[high io],"Otimizar a função get_bagfile_size() no SqliteStorage.
+
+Em versões anteriores, para determinar o tamanho total do arquivo de banco de dados  durante a gravação ou leitura, o sistema realizava operações que podiam ser custosas em termos de I/O",https://github.com/ros2/rosbag2/pull/1516/files,6cb7ea1fcd42076471c3bf977ea2cd352f66c0ac,"Foi adotada uma solução alternativa para evitar o bloqueio de mutex e consultas frequentes ao banco de dados para obter o número atual de páginas. Essa lógica foi deslocada para o final das operações de escrita no banco de dados, garantindo que o valor retornado por get_bagfile_size() já esteja previamente avaliado.
+
+O cálculo e a avaliação do tamanho do arquivo bag passam a ocorrer a cada operação de escrita no banco. Para reduzir a sobrecarga durante o despejo do buffer de cache para o armazenamento, a leitura do número atual de páginas do banco é realizada apenas após a conclusão do despejo de um lote de mensagens.
+
+Por fim, a avaliação intermediária do tamanho do arquivo em cada chamada de write(message) é feita com base na quantidade de bytes efetivamente gravados no banco de dados por essa chamada.
+
+Esta modificação introduz o suporte para serviços no rosbag2, permitindo a gravação e reprodução de requisições e respostas. Ela implementa novos tipos de tópicos específicos para eventos de serviço, além de estender a infraestrutura de armazenamento e os verbos de linha de comando para gerenciar esses dados de forma integrada.","#include <gmock/gmock.h>
+
+#include <filesystem>
+#include <memory>
+#include <string>
+
+#include ""rosbag2_storage/storage_factory.hpp""
+#include ""rosbag2_storage/storage_options.hpp""
+#include ""rosbag2_test_common/memory_management.hpp""
+#include ""rosbag2_test_common/tested_storage_ids.hpp""
+#include ""rosbag2_test_common/temporary_directory_fixture.hpp""
+#include ""std_msgs/msg/string.hpp""
+
+using namespace std::chrono_literals;  // NOLINT
+using namespace ::testing;  // NOLINT
+using namespace rosbag2_test_common;  // NOLINT
+
+class Rosbag2StorageAPITests : public rosbag2_test_common::ParametrizedTemporaryDirectoryFixture
+{
+public:
+  Rosbag2StorageAPITests()
+  {
+    memory_management_ = std::make_unique<MemoryManagement>();
+  }
+
+  void SetUp() override
+  {
+    auto bag_name = get_test_name() + ""_"" + GetParam();
+    root_bag_path_ = std::filesystem::path(temporary_dir_path_) / bag_name;
+
+    // Clean up potentially leftover bag files.
+    // There may be leftovers if the system reallocates a temp directory
+    // used by a previous test execution and the test did not have a clean exit.
+    std::filesystem::remove_all(root_bag_path_);
+  }
+
+  void TearDown() override
+  {
+    std::filesystem::remove_all(root_bag_path_);
+  }
+
+  static std::string get_test_name()
+  {
+    const auto * test_info = UnitTest::GetInstance()->current_test_info();
+    std::string test_name = test_info->name();
+    // Replace any slashes in the test name, since it is used in paths
+    std::replace(test_name.begin(), test_name.end(), '/', '_');
+    return test_name;
+  }
+
+  std::vector<std::shared_ptr<const rosbag2_storage::SerializedBagMessage>>
+  prepare_serialized_messages(
+    const std::vector<std::string> & topics, const size_t num_msgs_per_topic = 5,
+    std::chrono::duration<double> dt = 0.01s) const
+  {
+    std::vector<std::shared_ptr<const rosbag2_storage::SerializedBagMessage>> serialized_messages;
+    for (const auto & topic : topics) {
+      std::chrono::duration<double> timestamp{dt};
+      for (size_t msg_idx = 0; msg_idx < num_msgs_per_topic; msg_idx++) {
+        auto std_string_msg = std::make_shared<std_msgs::msg::String>();
+        std::stringstream ss;
+        for (int i = 0; i < 100; i++) {
+          ss << topic << ""_long_long_string_message_"" << msg_idx + 1 << ""_repeat_"";
+        }
+        std_string_msg->data = ss.str();
+
+        auto bag_message = std::make_shared<rosbag2_storage::SerializedBagMessage>();
+        bag_message->serialized_data = memory_management_->serialize_message(std_string_msg);
+        bag_message->time_stamp =
+          std::chrono::duration_cast<std::chrono::nanoseconds>(timestamp).count();
+        bag_message->topic_name = topic;
+        timestamp += dt;
+        serialized_messages.push_back(bag_message);
+      }
+    }
+    return serialized_messages;
+  }
+
+  static void create_topics(
+    std::shared_ptr<rosbag2_storage::storage_interfaces::ReadWriteInterface> & rw_storage,
+    const std::vector<std::string> & topics)
+  {
+    for (size_t topic_idx = 0; topic_idx < topics.size(); topic_idx++) {
+      const std::string type_description_hash = ""type_hash_"" + std::to_string(topic_idx);
+      const rosbag2_storage::MessageDefinition msg_definition = {
+        ""std_msgs/msg/String"", ""ros2msg"", ""string data"", type_description_hash};
+
+      rosbag2_storage::TopicMetadata topic_metadata = {
+        topics[topic_idx],
+        ""std_msgs/msg/String"",
+        ""cdr"",
+        {rclcpp::QoS(1)},
+        type_description_hash
+      };
+      rw_storage->create_topic(topic_metadata, msg_definition);
+    }
+  }
+
+  std::filesystem::path root_bag_path_;
+  std::unique_ptr<MemoryManagement> memory_management_;
+};
+
+TEST_P(Rosbag2StorageAPITests, get_bagfile_size_read_write_interface)
+{
+  const std::string FILE_EXTENSION = (GetParam() == ""mcap"") ? "".mcap"" : "".db3"";
+  std::filesystem::path full_bagfile_path = root_bag_path_;
+  full_bagfile_path.replace_extension(FILE_EXTENSION);
+
+  rosbag2_storage::StorageFactory factory{};
+  rosbag2_storage::StorageOptions options{};
+  options.uri = root_bag_path_.generic_string();
+  options.storage_id = GetParam();
+
+  std::shared_ptr<rosbag2_storage::storage_interfaces::ReadWriteInterface> rw_storage =
+    factory.open_read_write(options);
+
+  std::vector<std::string> topics = {""topic1_topic1"", ""topic2_topic2""};
+  auto serialized_messages = prepare_serialized_messages(topics, 500);
+  create_topics(rw_storage, topics);
+
+  rw_storage->write(serialized_messages);
+  uint64_t storage_bagfile_size = rw_storage->get_bagfile_size();
+
+  size_t fs_bagfile_size = std::filesystem::file_size(full_bagfile_path);
+  auto tolerance = static_cast<size_t>(fs_bagfile_size * 0.001);  // tolerance = 0.1%
+
+  size_t filesize_difference =
+    std::abs(static_cast<int64_t>(storage_bagfile_size) - static_cast<int64_t>(fs_bagfile_size));
+
+  EXPECT_LE(filesize_difference, tolerance) << "" tolerance = "" << tolerance << std::endl <<
+    "" filesize_difference = "" << filesize_difference << std::endl <<
+    "" bagfile_size_from_storage = "" << storage_bagfile_size;
+
+  // Write messages one more time to make sure that storage_bagfile_size updating with each write
+  rw_storage->write(serialized_messages);
+  storage_bagfile_size = rw_storage->get_bagfile_size();
+
+  fs_bagfile_size = std::filesystem::file_size(full_bagfile_path);
+  tolerance = static_cast<size_t>(fs_bagfile_size * 0.001);  // tolerance = 0.1%
+
+  filesize_difference =
+    std::abs(static_cast<int64_t>(storage_bagfile_size) - static_cast<int64_t>(fs_bagfile_size));
+
+  EXPECT_LE(filesize_difference, tolerance) << "" tolerance = "" << tolerance << std::endl <<
+    "" filesize_difference = "" << filesize_difference << std::endl <<
+    "" bagfile_size_from_storage = "" << storage_bagfile_size;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+  ParametrizedStorageAPITests,
+  Rosbag2StorageAPITests,
+  ValuesIn(rosbag2_test_common::kTestedStorageIDs)
+);",rosbag2_tests/test/rosbag2_tests/test_rosbag2_storage_api.cpp,,,,,
+,DP386,D7,https://github.com/ros-visualization/rqt_bag/pull/156,https://github.com/ros-visualization/rqt_bag/pull/156,YES,,"rosbag2, Python, bagfile
+
+Service message display
+
+Request/Response visualization
+
+Bag-file introspection
+
+Plugin-level metadata",[log file],"Não entendi direito e não achei uma issue relacionada, mas parece que soliciona um problema relacionado ao bagfile (rosbag2_py) Solução ainda preliminar na epoca (2024)",https://github.com/ros-visualization/rqt_bag/pull/156/files,82ec05ab8a983a13c720d801a046c1349559b62a,"Esta modificação introduz o suporte para plugins de renderização de mensagens no rqt_bag. Ela refatora a interface de visualização para carregar dinamicamente módulos que interpretam tipos de dados específicos, permitindo que usuários visualizem formatos personalizados de mensagens diretamente na linha do tempo do utilitário, sem modificar o código base.","if topic:
+            storage_filter = StorageFilter(topics=[topic])
+            self.reader.set_filter(storage_filter)
+
+        result = self.read_next() if self.reader.has_next() else None
+        # No filter
+        self.reader.reset_filter()
+        return result
+
+-------------------------------------------------------
+
+from pathlib import Path
+
+import PIL.Image as Image
+
+from python_qt_binding.QtGui import QImage, QPixmap, qRgba
+
+def rgb(r, g, b, a=255):
+    """"""(Internal) Turns an RGB color into a Qt compatible color integer.""""""
+    # use qRgb to pack the colors, and then turn the resulting long
+    # into a negative integer with the same bitpattern.
+    return qRgba(r, g, b, a) & 0xFFFFFFFF
+
+def align8to32(bytes, width, mode):
+    """"""
+    converts each scanline of data from 8 bit to 32 bit aligned
+    """"""
+
+    bits_per_pixel = {""1"": 1, ""L"": 8, ""P"": 8, ""I;16"": 16}[mode]
+
+    # calculate bytes per line and the extra padding if needed
+    bits_per_line = bits_per_pixel * width
+    full_bytes_per_line, remaining_bits_per_line = divmod(bits_per_line, 8)
+    bytes_per_line = full_bytes_per_line + (1 if remaining_bits_per_line else 0)
+
+    extra_padding = -bytes_per_line % 4
+
+    # already 32 bit aligned by luck
+    if not extra_padding:
+        return bytes
+
+    new_data = [
+        bytes[i * bytes_per_line : (i + 1) * bytes_per_line] + b""\x00"" * extra_padding
+        for i in range(len(bytes) // bytes_per_line)
+    ]
+
+    return b"""".join(new_data)
+
+
+def is_path(f):
+    return isinstance(f, (bytes, str, Path))
+
+
+def _toqclass_helper(im):
+    data = None
+    colortable = None
+    exclusive_fp = False
+
+    # handle filename, if given instead of image name
+    if hasattr(im, ""toUtf8""):
+        # FIXME - is this really the best way to do this?
+        im = str(im.toUtf8(), ""utf-8"")
+    if is_path(im):
+        im = Image.open(im)
+        exclusive_fp = True
+
+    qt_format = QImage
+    if im.mode == ""1"":
+        format = qt_format.Format_Mono
+    elif im.mode == ""L"":
+        format = qt_format.Format_Indexed8
+        colortable = [rgb(i, i, i) for i in range(256)]
+    elif im.mode == ""P"":
+        format = qt_format.Format_Indexed8
+        palette = im.getpalette()
+        colortable = [rgb(*palette[i : i + 3]) for i in range(0, len(palette), 3)]
+    elif im.mode == ""RGB"":
+        # Populate the 4th channel with 255
+        im = im.convert(""RGBA"")
+
+        data = im.tobytes(""raw"", ""BGRA"")
+        format = qt_format.Format_RGB32
+    elif im.mode == ""RGBA"":
+        data = im.tobytes(""raw"", ""BGRA"")
+        format = qt_format.Format_ARGB32
+    elif im.mode == ""I;16"" and hasattr(qt_format, ""Format_Grayscale16""):  # Qt 5.13+
+        im = im.point(lambda i: i * 256)
+
+        format = qt_format.Format_Grayscale16
+    else:
+        if exclusive_fp:
+            im.close()
+        msg = f""unsupported image mode {repr(im.mode)}""
+        raise ValueError(msg)
+
+    size = im.size
+    __data = data or align8to32(im.tobytes(), size[0], im.mode)
+    if exclusive_fp:
+        im.close()
+    return {""data"": __data, ""size"": size, ""format"": format, ""colortable"": colortable}
+
+
+class ImageQt(QImage):
+    def __init__(self, im):
+        """"""
+        An PIL image wrapper for Qt.  This is a subclass of PyQt's QImage
+        class.
+
+        :param im: A PIL Image object, or a file name (given either as
+            Python string or a PyQt string object).
+        """"""
+        im_data = _toqclass_helper(im)
+        # must keep a reference, or Qt will crash!
+        # All QImage constructors that take data operate on an existing
+        # buffer, so this buffer has to hang on for the life of the image.
+        # Fixes https://github.com/python-pillow/Pillow/issues/1370
+        self.__data = im_data[""data""]
+        super().__init__(
+            self.__data,
+            im_data[""size""][0],
+            im_data[""size""][1],
+            im_data[""format""],
+        )
+        if im_data[""colortable""]:
+            self.setColorTable(im_data[""colortable""])","rqt_bag/src/rqt_bag/rosbag2.py
+
+rqt_bag_plugins/src/rqt_bag_plugins/image_qt.py",,,,,
