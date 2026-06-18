@@ -1,14 +1,14 @@
 # ECSA-2026-ROS2GreenArch
-Replication package of the paper submitted to ECSA 2026 as a short paper. On Green ROS 2 Architecture.
+Replication package of the paper `On the Architectural Evolution of ROS 2: Toward Greener Robotics Software Design`, under publication at ECSA 2026.
 
-This repository contains the replication package, datasets, and supplementary material for the paper:
-**"On the Architectural Evolution of ROS 2: Toward Greener Robotics Software Design"** (Submitted to ECSA 2026).
+## Package Description
 
-## 🔍 Overview
+This package contains the initial data, manually mined from ROS documentation, a customized script to extract information from meta-tickets on GitHub, a customized script for downloading the selected PR code (only the changes in the commits), and the already downloaded code based on the 17 PRs that we previously selected.
+
+## Study Overview
 The Robot Operating System (ROS) is the standard middleware for modern robotics. As many robotic systems are battery-dependent, energy optimization is vital for longer and more reliable missions. This research investigates the architectural evolution of ROS 2 across seven distributions—from **Dashing Diademata** to **Jazzy Jalisco**—to identify design decisions that impact energy efficiency.
 
 ## 👥 Research
-
 
 ### Key Research Contributions:
 * **Systematic Mapping**: A dataset of 386 architectural decisions manually mapped from official documentation and meta-tickets.
