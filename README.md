@@ -1,4 +1,10 @@
 # ECSA-2026-ROS2GreenArch
+
+<!-- ECSA 2026 Open Science Badges -->
+[![ECSA 2026 - Publicly Shared](https://img.shields.io/badge/ECSA'26_Open_Science-Publicly_Shared_(PS)-blue?style=flat-square)](https://conf.researchr.org/track/ecsa-2026/ecsa-2026-open-science-track)
+[![ECSA 2026 - Verified Execution](https://img.shields.io/badge/ECSA'26_Open_Science-Verified_Execution_(VE)-green?style=flat-square)](https://conf.researchr.org/track/ecsa-2026/ecsa-2026-open-science-track)
+[![ECSA 2026 - Documented & Functional](https://img.shields.io/badge/ECSA'26_Open_Science-Documented_%26_Functional_(DF)-brightgreen?style=flat-square)](https://conf.researchr.org/track/ecsa-2026/ecsa-2026-open-science-track)
+
 Replication package of the paper `On the Architectural Evolution of ROS 2: Toward Greener Robotics Software Design`, under publication at ECSA 2026.
 
 ## Package Description
@@ -43,6 +49,13 @@ To replicate the study or use the provided scripts, follow these steps:
 4. **Code Comparison**: Use `download_pr_versions.py` to retrieve the "before" and "after" code versions for a specific decision.
 
 ---
+
+## 🏅 Open Science Badges
+This repository was evaluated and awarded the following badges at the **ECSA 2026 Open Science Track**:
+
+* **Publicly Shared (PS):** The artifact is permanently and publicly accessible.
+* **Verified Execution (VE):** The execution of the analysis scripts and environment setup was independently verified.
+* **Documented & Functional (DF):** The artifact contains clear documentation, installation requirements, and functional execution pipelines.
 
 ## 📄 How to Cite
 If you use this dataset or findings in your research, please cite our ECSA 2026 paper:
